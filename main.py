@@ -2,11 +2,9 @@ from fastapi import FastAPI, Body, Request, Depends, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from contextlib import asynccontextmanager
 from starlette.middleware.sessions import SessionMiddleware
 from passlib.context import CryptContext
-from itsdangerous import URLSafeTimedSerializer
 import sqlite3
 import io
 import csv
@@ -14,35 +12,19 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 from twilio.rest import Client
-from database import init_db, init_usuarios, salvar
-from parser import parse_dados
+from database import init_db, salvar, get_phones_for_local, get_bioterios_for_user
 
-# ────────────────────────────────────────────────
-# Config Twilio + antispam
-# ────────────────────────────────────────────────
 load_dotenv()
 
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
 
-if not all([account_sid, auth_token, TWILIO_FROM]):
-    print("⚠️ Credenciais Twilio incompletas no .env")
-    # Opcional: raise ValueError("Credenciais Twilio ausentes") para parar a execução
-
 TWILIO_CLIENT = Client(account_sid, auth_token)
-# Antispam simples: último envio por local/medidor
-ULTIMO_ALERTA = {}  # chave: Local, valor: datetime do último envio
 
-def get_current_user(request: Request):
-    user = request.session.get("user")
-    if not user:
-        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
-    return user
-
+ULTIMO_ALERTA = {}
 
 def enviar_alerta_whatsapp(telefone: str, mensagem: str):
-    """Envia mensagem WhatsApp via Twilio"""
     if not telefone.startswith("+"):
         telefone = f"+{telefone}"
     
@@ -59,113 +41,44 @@ def enviar_alerta_whatsapp(telefone: str, mensagem: str):
         return False
 
 def notificar_clientes_sobre_alarme(dados: dict):
-
-
-    print("[DEBUG] Dados recebidos no alerta:", dados)  # mostra todo o dict parseado
-    print("[DEBUG] Valor de Alarme:", dados.get("Alarme", "OK"))
-    if dados.get("Alarme", "OK").strip().upper() in ["OK", "", None]:
-        print("[DEBUG] Alarme ignorado: valor = OK ou vazio")
+    alarme_val = dados.get("Alarme", "OK").strip().upper()
+    if alarme_val in ["OK", "", None, "FALHA"]:
         return
- 
-    local = dados.get("Local", "Desconhecido")  # chave para antispam
+
+    local = dados.get("Local", "Desconhecido")
     agora = datetime.now()
 
-    # Antispam: máximo 1 alerta por local a cada 10 minutos
-    ultimo = ULTIMO_ALERTA.get(local)
-    if ultimo and agora - ultimo < timedelta(minutes=10):
-        print(f"[ANTISPAM] Alerta ignorado para {local} (dentro de 10 min do último)")
-        return
+    if local in ULTIMO_ALERTA:
+        if agora - ULTIMO_ALERTA[local] < timedelta(minutes=10):
+            print(f"[ANTISPAM] Alerta ignorado para {local} (menos de 10 min)")
+            return
 
-    # Monta mensagem
     timestamp = dados.get("Timestamp", agora.strftime("%Y-%m-%d %H:%M:%S"))
-    alarme = dados.get("Alarme", "Desconhecido")
+    mensagem = f"🚨 ALARME:BIOTERIO_{local}@{alarme_val} detectado em {timestamp} Verifique imediatamente"
 
-    mensagem = (
-        f"🚨 ALERTA BIOTÉRIO\n"
-        f"Local: {local}\n"
-        f"Alarme: {alarme}\n"
-        f"Hora: {timestamp}\n"
-        f"Verifique o dashboard imediatamente!"
-    )
+    telefones = get_phones_for_local(local)
+    enviados = 0
+    for tel in telefones:
+        if enviar_alerta_whatsapp(tel, mensagem):
+            enviados += 1
 
-    # Envio fixo só pro seu número (teste atual)
-    telefone_teste = "+5561999182112"
-    if enviar_alerta_whatsapp(telefone_teste, mensagem):
-        print(f"[TESTE] Alerta enviado só para {telefone_teste}")
+    if enviados > 0:
+        ULTIMO_ALERTA[local] = agora
+        print(f"[ALERTA] Enviado para {enviados} cliente(s) → {local}")
 
-    # Atualiza o último envio (antispam)
-    ULTIMO_ALERTA[local] = agora
-
-
-# lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    init_usuarios()
     yield
 
 app = FastAPI(title="Monitor Bioterios", lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key="bioterio")  
+app.add_middleware(SessionMiddleware, secret_key="bioterio-segredo-muito-importante")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = "bioterio"
-serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# ────────────────────────────────────────────────
-# Suas rotas existentes (mantidas iguais)
-# ────────────────────────────────────────────────
-
-# página admin
-@app.get("/admin/usuarios", response_class=HTMLResponse)
-async def admin_usuarios(request: Request, user = Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Acesso negado")
-    
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute("SELECT id, username, role, ativo FROM usuarios")
-    usuarios = c.fetchall()
-    conn.close()
-    
-    return templates.TemplateResponse("admin/usuarios.html", {
-        "request": request,
-        "usuarios": usuarios,
-        "user": user
-    })
-
-@app.post("/admin/usuarios/criar")
-async def criar_usuario(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form("cliente"), user = Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403)
-    
-    hash_senha = pwd_context.hash(password)
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO usuarios (username, password_hash, role) VALUES (?, ?, ?)", (username, hash_senha, role))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        return {"error": "Usuário já existe"}
-    conn.close()
-    return RedirectResponse(url="/admin/usuarios", status_code=303)
-
-@app.post("/admin/usuarios/excluir/{user_id}")
-async def excluir_usuario(user_id: int, user = Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403)
-    
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-    return RedirectResponse(url="/admin/usuarios", status_code=303)
-
-
-# usuário
 def get_current_user(request: Request):
     user = request.session.get("user")
     if not user:
@@ -192,66 +105,70 @@ async def login(request: Request, username: str = Form(...), password: str = For
     request.session["user"] = {"username": user[0], "role": user[2]}
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
-# logout
 @app.get("/logout")
 async def logout(request: Request):
     request.session.pop("user", None)
     return RedirectResponse(url="/login")
 
-# cfg
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
-# receber dados do scraper
-@app.post("/api/receber")
-async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
-    dados = parse_dados(bloco)
-    salvar(dados, bloco)
-
-    # Dispara o alerta WhatsApp (teste para seu número)
-    notificar_clientes_sobre_alarme(dados)
-
-    return {"status": "salvo"}
-
-# dashboard
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, user = Depends(get_current_user)):
+    bioterios = get_bioterios_for_user(user["username"])
+    if user["role"] == "admin" or not bioterios:
+        bioterios = None  # admin vê todos
+
     conn = sqlite3.connect("leituras.db")
     c = conn.cursor()
-    c.execute("""
-        SELECT Timestamp, Local, Alarme, Energia,
-               SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
-               SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
-               SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
-               SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
-               data_captura
-        FROM leituras ORDER BY id DESC LIMIT 1
-    """)
-    ultima = c.fetchone()
+    
+    if bioterios:
+        placeholders = ','.join('?' for _ in bioterios)
+        query = f"""
+            SELECT Local, MAX(data_captura) as ultima, 
+                   MAX(Timestamp) as timestamp, Alarme, Energia
+            FROM leituras 
+            WHERE Local IN ({placeholders})
+            GROUP BY Local
+            ORDER BY ultima DESC
+        """
+        c.execute(query, bioterios)
+    else:
+        c.execute("""
+            SELECT Local, MAX(data_captura) as ultima, 
+                   MAX(Timestamp) as timestamp, Alarme, Energia
+            FROM leituras 
+            GROUP BY Local
+            ORDER BY ultima DESC
+        """)
+    
+    leituras = c.fetchall()
     conn.close()
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "ultima": ultima
+        "leituras": leituras,
+        "user": user
     })
 
-# histórico
 @app.get("/historico", response_class=HTMLResponse)
-async def historico(request: Request):
+async def historico(request: Request, user = Depends(get_current_user)):
+    bioterios = get_bioterios_for_user(user["username"])
+    if user["role"] == "admin" or not bioterios:
+        bioterios = None
+
     conn = sqlite3.connect("leituras.db")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("""
-        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
-               SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
-               SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
-               SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
-               SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
-               data_captura
-        FROM leituras 
-        ORDER BY id DESC 
-        LIMIT 150
-    """)
+    
+    if bioterios:
+        placeholders = ','.join('?' for _ in bioterios)
+        query = f"""
+            SELECT * FROM leituras 
+            WHERE Local IN ({placeholders})
+            ORDER BY id DESC LIMIT 300
+        """
+        c.execute(query, bioterios)
+    else:
+        c.execute("SELECT * FROM leituras ORDER BY id DESC LIMIT 300")
+    
     rows = c.fetchall()
     headers = [desc[0] for desc in c.description]
     conn.close()
@@ -259,44 +176,59 @@ async def historico(request: Request):
     return templates.TemplateResponse("historico.html", {
         "request": request,
         "headers": headers,
-        "rows": rows
+        "rows": rows,
+        "user": user
     })
 
-# health
+@app.post("/api/receber")
+async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
+    from parser import parse_dados  # assumindo que você tem esse módulo
+    dados = parse_dados(bloco)
+    salvar(dados, bloco)
+    notificar_clientes_sobre_alarme(dados)
+    return {"status": "salvo"}
+
+@app.get("/admin/usuarios", response_class=HTMLResponse)
+async def admin_usuarios(request: Request, user = Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    c.execute("SELECT id, username, role, ativo, phones, bioterios FROM usuarios ORDER BY username")
+    usuarios = c.fetchall()
+    conn.close()
+    
+    return templates.TemplateResponse("admin/usuarios.html", {
+        "request": request,
+        "usuarios": usuarios,
+        "user": user
+    })
+
+@app.post("/admin/usuarios/atualizar/{user_id}")
+async def atualizar_usuario(
+    user_id: int,
+    phones: str = Form(default=""),
+    bioterios: str = Form(default=""),
+    user = Depends(get_current_user)
+):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    c.execute(
+        "UPDATE usuarios SET phones = ?, bioterios = ? WHERE id = ?",
+        (phones.strip(), bioterios.strip(), user_id)
+    )
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse("/admin/usuarios", status_code=303)
+
 @app.get("/health")
 async def health():
     return {"status": "online"}
-
-# exportar CSV
-@app.get("/export-csv")
-async def export_csv():
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
-               SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
-               SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
-               SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
-               SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
-               data_captura
-        FROM leituras 
-        ORDER BY id DESC 
-        LIMIT 150
-    """)
-    rows = c.fetchall()
-    headers = [desc[0] for desc in c.description]
-    conn.close()
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(headers)  
-    writer.writerows(rows)    
-
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=historico_leituras.csv"}
-    )
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,61 +1,38 @@
 {% extends "base.html" %}
 
-{% block title %}Admin - Usuários{% endblock %}
-
 {% block content %}
-<div class="container mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-6">Gerenciar Usuários (Admin)</h1>
-    
-    <div class="bg-white p-6 rounded-lg shadow mb-8">
-        <h2 class="text-xl font-semibold mb-4">Criar Novo Usuário</h2>
-        <form method="post" action="/admin/usuarios/criar" class="space-y-4">
-            <div>
-                <label class="block text-sm">Usuário</label>
-                <input type="text" name="username" required class="w-full border rounded p-2">
-            </div>
-            <div>
-                <label class="block text-sm">Senha</label>
-                <input type="password" name="password" required class="w-full border rounded p-2">
-            </div>
-            <div>
-                <label class="block text-sm">Role</label>
-                <select name="role" class="w-full border rounded p-2">
-                    <option value="cliente">Cliente</option>
-                    <option value="admin">Admin</option>
-                </select>
-            </div>
-            <button type="submit" class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
-                Criar Usuário
-            </button>
-        </form>
-    </div>
-    
-    <h2 class="text-xl font-semibold mb-4">Usuários Cadastrados</h2>
-    <table class="min-w-full bg-white border">
-        <thead>
-            <tr class="bg-gray-100">
-                <th class="py-2 px-4">ID</th>
-                <th class="py-2 px-4">Username</th>
-                <th class="py-2 px-4">Role</th>
-                <th class="py-2 px-4">Ativo</th>
-                <th class="py-2 px-4">Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for u in usuarios %}
-            <tr>
-                <td class="py-2 px-4 border">{{ u[0] }}</td>
-                <td class="py-2 px-4 border">{{ u[1] }}</td>
-                <td class="py-2 px-4 border">{{ u[2] }}</td>
-                <td class="py-2 px-4 border">{{ 'Sim' if u[3] else 'Não' }}</td>
-                <td class="py-2 px-4 border">
-                    <form method="post" action="/admin/usuarios/excluir/{{ u[0] }}" class="inline">
-                        <button type="submit" class="text-red-600 hover:underline">Excluir</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+<h1 class="mb-4">Gerenciar Usuários</h1>
+
+<table class="table table-dark table-striped table-hover">
+    <thead>
+        <tr>
+            <th>Usuário</th>
+            <th>Role</th>
+            <th>Ativo</th>
+            <th>Telefones (separar por vírgula)</th>
+            <th>Biotérios permitidos (separar por vírgula)</th>
+            <th>Ação</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for u in usuarios %}
+        <tr>
+            <td>{{ u[1] }}</td>
+            <td>{{ u[2] }}</td>
+            <td>{% if u[3] %}Sim{% else %}Não{% endif %}</td>
+            <td>
+                <form action="/admin/usuarios/atualizar/{{ u[0] }}" method="post" class="d-flex gap-2">
+                    <input type="text" name="phones" value="{{ u[4] | default('') }}" class="form-control" placeholder="+55...">
+            </td>
+            <td>
+                    <input type="text" name="bioterios" value="{{ u[5] | default('') }}" class="form-control" placeholder="Sala A, Sala B, ...">
+            </td>
+            <td>
+                    <button type="submit" class="btn btn-sm btn-success">Salvar</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
 {% endblock %}

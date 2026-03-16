@@ -1,0 +1,22 @@
+# Ignorar venv e ambientes virtuais
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Banco de dados local
+leituras.db
+
+# Logs e temporários
+*.log
+.DS_Store
+Thumbs.db
+
+# Outros que podem aparecer
+*.sqlite3
+node_modules/
+dist/
+build/

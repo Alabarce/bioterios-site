@@ -60,6 +60,15 @@ def init_db():
         )
     ''')
     
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ultimo_alarme (
+            local           TEXT PRIMARY KEY,
+            alarme_detalhe  TEXT,
+            timestamp       TEXT,
+            data_captura    TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     conn.commit()
     
     # Cria admin padrão se não existir
@@ -155,3 +164,44 @@ def salvar(dados: dict, raw_bloco: str = ""):
     c.execute(query, list(row.values()))
     conn.commit()
     conn.close()
+
+def atualizar_ultimo_alarme(local: str, detalhe: str, timestamp: str):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute('''
+        INSERT OR REPLACE INTO ultimo_alarme (local, alarme_detalhe, timestamp, data_captura)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (local, detalhe, timestamp))
+    conn.commit()
+    conn.close()
+
+def get_ultimo_alarme(local: str) -> tuple:
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT alarme_detalhe, timestamp FROM ultimo_alarme WHERE local = ?", (local,))
+    row = c.fetchone()
+    conn.close()
+    return row if row else (None, None)
+
+def get_phones_for_local(local: str):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT phones FROM usuarios WHERE bioterios LIKE ? AND ativo = 1", (f"%{local}%",))
+    results = c.fetchall()
+    conn.close()
+    
+    phones = []
+    for row in results:
+        if row[0]:
+            phones.extend([p.strip() for p in row[0].split(',') if p.strip()])
+    return phones
+
+def get_bioterios_for_user(username: str):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT bioterios FROM usuarios WHERE username = ? AND ativo = 1", (username,))
+    row = c.fetchone()
+    conn.close()
+    if row and row[0]:
+        return [b.strip() for b in row[0].split(',') if b.strip()]
+    return []

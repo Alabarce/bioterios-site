@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 from twilio.rest import Client
-from database import init_db, salvar, get_phones_for_local, get_bioterios_for_user
+from database import init_db, salvar, get_phones_for_local, get_bioterios_for_user, get_ultimo_alarme, atualizar_ultimo_alarme
 
 load_dotenv()
 
@@ -39,22 +39,31 @@ def enviar_alerta_whatsapp(telefone: str, mensagem: str):
     except Exception as e:
         print(f"[TWILIO ERRO] Falha para {telefone}: {str(e)}")
         return False
-
+    
 def notificar_clientes_sobre_alarme(dados: dict):
-    alarme_val = dados.get("Alarme", "OK").strip().upper()
-    if alarme_val in ["OK", "", None, "FALHA"]:
+    print("[DEBUG] Entrou na função com dados:", dados)
+    detalhe = dados.get("Alarme_Detalhe", "").strip()
+    local = dados.get("Local", "Desconhecido")  # move para cá, antes do print
+
+    if not detalhe:
         return
 
-    local = dados.get("Local", "Desconhecido")
+#    print(f"[DEBUG] Detalhe detectado: '{detalhe}' | Local: {local}")
+
+    ultimo_detalhe, ultimo_ts = get_ultimo_alarme(local)
+
+    if ultimo_detalhe == detalhe:
+        return
+
+    atualizar_ultimo_alarme(local, detalhe, dados.get("Timestamp", ""))
+
     agora = datetime.now()
+    if local in ULTIMO_ALERTA and agora - ULTIMO_ALERTA[local] < timedelta(minutes=5):
+        return
 
-    if local in ULTIMO_ALERTA:
-        if agora - ULTIMO_ALERTA[local] < timedelta(minutes=10):
-            print(f"[ANTISPAM] Alerta ignorado para {local} (menos de 10 min)")
-            return
+    msg_timestamp = dados.get("Timestamp", "") or agora.strftime("%d/%m/%y_%H:%M:%S")
 
-    timestamp = dados.get("Timestamp", agora.strftime("%Y-%m-%d %H:%M:%S"))
-    mensagem = f"🚨 ALARME:BIOTERIO_{local}@{alarme_val} detectado em {timestamp} Verifique imediatamente"
+    mensagem = f"🚨 ALARME:BIOTERIO_{local}@{detalhe} detectado em {msg_timestamp} Verifique imediatamente"
 
     telefones = get_phones_for_local(local)
     enviados = 0
@@ -64,7 +73,6 @@ def notificar_clientes_sobre_alarme(dados: dict):
 
     if enviados > 0:
         ULTIMO_ALERTA[local] = agora
-        print(f"[ALERTA] Enviado para {enviados} cliente(s) → {local}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -84,6 +92,59 @@ def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
     return user
+
+
+@app.post("/admin/usuarios/criar")
+async def criar_usuario(
+    username: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("cliente"),
+    user = Depends(get_current_user)
+):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    hash_senha = pwd_context.hash(password)
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT INTO usuarios (username, password_hash, role, phones, bioterios) VALUES (?, ?, ?, '', '')",
+            (username, hash_senha, role)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return templates.TemplateResponse("admin/usuarios.html", {
+            "request": request,
+            "usuarios": [],  # ou busque novamente
+            "user": user,
+            "error": "Usuário já existe"
+        })
+    conn.close()
+    return RedirectResponse("/admin/usuarios", status_code=303)
+
+
+@app.post("/admin/usuarios/atualizar/{user_id}")
+async def atualizar_usuario(
+    user_id: int,
+    phones: str = Form(default=""),
+    bioterios: str = Form(default=""),
+    user = Depends(get_current_user)
+):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    c.execute(
+        "UPDATE usuarios SET phones = ?, bioterios = ? WHERE id = ?",
+        (phones.strip(), bioterios.strip(), user_id)
+    )
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse("/admin/usuarios", status_code=303)
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -110,36 +171,130 @@ async def logout(request: Request):
     request.session.pop("user", None)
     return RedirectResponse(url="/login")
 
-@app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, user = Depends(get_current_user)):
+@app.get("/export-csv")
+async def export_csv(user = Depends(get_current_user)):
     bioterios = get_bioterios_for_user(user["username"])
     if user["role"] == "admin" or not bioterios:
-        bioterios = None  # admin vê todos
+        bioterios = None
 
     conn = sqlite3.connect("leituras.db")
     c = conn.cursor()
-    
+
     if bioterios:
         placeholders = ','.join('?' for _ in bioterios)
         query = f"""
-            SELECT Local, MAX(data_captura) as ultima, 
-                   MAX(Timestamp) as timestamp, Alarme, Energia
+            SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
+                   SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
+                   SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
+                   SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
+                   SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
+                   data_captura
             FROM leituras 
             WHERE Local IN ({placeholders})
-            GROUP BY Local
-            ORDER BY ultima DESC
+            ORDER BY id DESC 
+            LIMIT 300
         """
         c.execute(query, bioterios)
     else:
         c.execute("""
-            SELECT Local, MAX(data_captura) as ultima, 
-                   MAX(Timestamp) as timestamp, Alarme, Energia
+            SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
+                   SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
+                   SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
+                   SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
+                   SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
+                   data_captura
             FROM leituras 
-            GROUP BY Local
-            ORDER BY ultima DESC
+            ORDER BY id DESC 
+            LIMIT 300
         """)
-    
-    leituras = c.fetchall()
+
+    rows = c.fetchall()
+    headers = [desc[0] for desc in c.description]
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leituras_recentes.csv"}
+    )
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request, user=Depends(get_current_user)):
+    bioterios_permitidos = get_bioterios_for_user(user["username"])
+    if user["role"] == "admin" or not bioterios_permitidos:
+        bioterios_permitidos = None
+
+    conn = sqlite3.connect("leituras.db")
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    leituras = {
+        "ufmg": {"salas": [{} for _ in range(8)], "ultima_leitura": None},
+        "lammebio": {"salas": [{} for _ in range(4)], "ultima_leitura": None}
+    }
+
+    # Pega o registro mais recente por Local
+    if bioterios_permitidos:
+        placeholders = ','.join('?' for _ in bioterios_permitidos)
+        c.execute(f"""
+            SELECT * FROM leituras t1
+            WHERE data_captura = (
+                SELECT MAX(data_captura) 
+                FROM leituras t2 
+                WHERE t2.Local = t1.Local
+            )
+            AND Local IN ({placeholders})
+        """, bioterios_permitidos)
+    else:
+        c.execute("""
+            SELECT * FROM leituras t1
+            WHERE data_captura = (
+                SELECT MAX(data_captura) 
+                FROM leituras t2 
+                WHERE t2.Local = t1.Local
+            )
+        """)
+
+    rows = c.fetchall()
+
+    for row in rows:
+        local = row["Local"].upper()
+        ultima = row["Timestamp"] or row["data_captura"]  # prioriza Timestamp do sensor
+
+        if "UFMG" in local or "CENTRAL" in local:
+            leituras["ufmg"]["ultima_leitura"] = ultima
+            for i in range(1, 9):
+                sala_key = f"SL{i}"
+                leituras["ufmg"]["salas"][i-1] = {
+                    "numero": i,
+                    "temperatura": row[f"{sala_key}_T"] or "---",
+                    "umidade": row[f"{sala_key}_RH"] or "---",
+                    "luz": row[f"{sala_key}_Luz"] or "---",
+                    "falha_t": row[f"Falha_{sala_key}_T"] or 0,
+                    "falha_rh": row[f"Falha_{sala_key}_RH"] or 0,
+                    "falha_luz": row[f"Falha_{sala_key}_Luz"] or 0,
+                    "ultima_atualizacao": ultima
+                }
+        elif "LAMMEBIO" in local:
+            leituras["lammebio"]["ultima_leitura"] = ultima
+            for i in range(1, 5):
+                sala_key = f"SL{i}"
+                leituras["lammebio"]["salas"][i-1] = {
+                    "numero": i,
+                    "temperatura": row[f"{sala_key}_T"] or "---",
+                    "umidade": row[f"{sala_key}_RH"] or "---",
+                    "luz": row[f"{sala_key}_Luz"] or "---",
+                    "falha_t": row[f"Falha_{sala_key}_T"] or 0,
+                    "falha_rh": row[f"Falha_{sala_key}_RH"] or 0,
+                    "falha_luz": row[f"Falha_{sala_key}_Luz"] or 0,
+                    "ultima_atualizacao": ultima
+                }
+
     conn.close()
 
     return templates.TemplateResponse("dashboard.html", {
@@ -147,6 +302,7 @@ async def dashboard(request: Request, user = Depends(get_current_user)):
         "leituras": leituras,
         "user": user
     })
+
 
 @app.get("/historico", response_class=HTMLResponse)
 async def historico(request: Request, user = Depends(get_current_user)):
@@ -157,20 +313,37 @@ async def historico(request: Request, user = Depends(get_current_user)):
     conn = sqlite3.connect("leituras.db")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    
+
+    query = """
+        SELECT id, data_captura, Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia,
+               SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
+               SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
+               SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
+               SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
+               Falha_SL1_T, Falha_SL1_RH, Falha_SL1_Luz,
+               Falha_SL2_T, Falha_SL2_RH, Falha_SL2_Luz,
+               Falha_SL3_T, Falha_SL3_RH, Falha_SL3_Luz,
+               Falha_SL4_T, Falha_SL4_RH, Falha_SL4_Luz,
+               Falha_SL5_T, Falha_SL5_RH, Falha_SL5_Luz,
+               Falha_SL6_T, Falha_SL6_RH, Falha_SL6_Luz,
+               Falha_SL7_T, Falha_SL7_RH, Falha_SL7_Luz,
+               Falha_SL8_T, Falha_SL8_RH, Falha_SL8_Luz,
+               raw_bloco
+        FROM leituras
+    """
+    params = []
+
     if bioterios:
         placeholders = ','.join('?' for _ in bioterios)
-        query = f"""
-            SELECT * FROM leituras 
-            WHERE Local IN ({placeholders})
-            ORDER BY id DESC LIMIT 300
-        """
-        c.execute(query, bioterios)
-    else:
-        c.execute("SELECT * FROM leituras ORDER BY id DESC LIMIT 300")
-    
+        query += f" WHERE Local IN ({placeholders})"
+        params.extend(bioterios)
+
+    query += " ORDER BY id DESC LIMIT 300"
+    c.execute(query, params)
+
     rows = c.fetchall()
-    headers = [desc[0] for desc in c.description]
+    # Filtra headers removendo Alarme e raw_bloco
+    headers = [desc[0] for desc in c.description if desc[0] not in ('Alarme', 'raw_bloco')]
     conn.close()
 
     return templates.TemplateResponse("historico.html", {
@@ -195,7 +368,11 @@ async def admin_usuarios(request: Request, user = Depends(get_current_user)):
     
     conn = sqlite3.connect("leituras.db")
     c = conn.cursor()
-    c.execute("SELECT id, username, role, ativo, phones, bioterios FROM usuarios ORDER BY username")
+    c.execute("""
+        SELECT id, username, role, ativo, phones, bioterios 
+        FROM usuarios 
+        ORDER BY username
+    """)
     usuarios = c.fetchall()
     conn.close()
     
@@ -204,6 +381,7 @@ async def admin_usuarios(request: Request, user = Depends(get_current_user)):
         "usuarios": usuarios,
         "user": user
     })
+
 
 @app.post("/admin/usuarios/atualizar/{user_id}")
 async def atualizar_usuario(

@@ -7,6 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from passlib.context import CryptContext
 import sqlite3
 import io
+import json
 import csv
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -24,31 +25,32 @@ TWILIO_CLIENT = Client(account_sid, auth_token)
 
 ULTIMO_ALERTA = {}
 
-def enviar_alerta_whatsapp(telefone: str, mensagem: str):
-    if not telefone.startswith("+"):
-        telefone = f"+{telefone}"
-    
-    try:
-        msg = TWILIO_CLIENT.messages.create(
-            from_=TWILIO_FROM,
-            to=f"whatsapp:{telefone}",
-            body=mensagem
-        )
-        print(f"[TWILIO] Enviado → SID: {msg.sid} | Para: {telefone}")
-        return True
-    except Exception as e:
-        print(f"[TWILIO ERRO] Falha para {telefone}: {str(e)}")
-        return False
-    
+def extrair_variaveis_alarme(detalhe: str):
+    if not detalhe:
+        return "ALARME DETECTADO", "FALHA"
+
+    detalhe = detalhe.strip()
+
+    if '@' in detalhe:
+        leitura_raw = detalhe.rsplit('@', 1)[-1].strip()
+    else:
+        leitura_raw = detalhe
+
+    leitura_raw = leitura_raw.split('|')[0].strip()
+
+    var1 = leitura_raw.replace('____', ' ').replace('_', ' ')
+    var1 = ' '.join(var1.split())
+
+    var2 = "FALHA"
+
+    return var1, var2
+  
 def notificar_clientes_sobre_alarme(dados: dict):
-    print("[DEBUG] Entrou na função com dados:", dados)
     detalhe = dados.get("Alarme_Detalhe", "").strip()
-    local = dados.get("Local", "Desconhecido")  # move para cá, antes do print
+    local = dados.get("Local", "Desconhecido")
 
     if not detalhe:
         return
-
-#    print(f"[DEBUG] Detalhe detectado: '{detalhe}' | Local: {local}")
 
     ultimo_detalhe, ultimo_ts = get_ultimo_alarme(local)
 
@@ -61,18 +63,42 @@ def notificar_clientes_sobre_alarme(dados: dict):
     if local in ULTIMO_ALERTA and agora - ULTIMO_ALERTA[local] < timedelta(minutes=5):
         return
 
-    msg_timestamp = dados.get("Timestamp", "") or agora.strftime("%d/%m/%y_%H:%M:%S")
-
-    mensagem = f"🚨 ALARME:BIOTERIO_{local}@{detalhe} detectado em {msg_timestamp} Verifique imediatamente"
+    var1, var2 = extrair_variaveis_alarme(detalhe)
 
     telefones = get_phones_for_local(local)
     enviados = 0
     for tel in telefones:
-        if enviar_alerta_whatsapp(tel, mensagem):
+        if enviar_alerta_whatsapp(tel, var1, var2):
             enviados += 1
 
     if enviados > 0:
         ULTIMO_ALERTA[local] = agora
+
+
+def enviar_alerta_whatsapp(telefone: str, var1: str, var2: str):
+    if not telefone.startswith("+"):
+        telefone = f"+{telefone}"
+
+    var1 = (var1 or "Desconhecido").strip()
+    var2 = (var2 or "FALHA").strip()
+
+    try:
+        msg = TWILIO_CLIENT.messages.create(
+            from_=TWILIO_FROM,
+            to=f"whatsapp:{telefone}",
+            content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
+            content_variables=json.dumps({
+                "1": var1,
+                "2": var2
+            })
+        )
+        print(f"[TWILIO] Enviado → SID: {msg.sid}")
+        return True
+    except Exception as e:
+        print(f"[TWILIO ERRO] Falha para {telefone}: {str(e)}")
+        return False
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -305,17 +331,12 @@ async def dashboard(request: Request, user=Depends(get_current_user)):
 
 
 @app.get("/historico", response_class=HTMLResponse)
-async def historico(request: Request, user = Depends(get_current_user)):
-    bioterios = get_bioterios_for_user(user["username"])
-    if user["role"] == "admin" or not bioterios:
-        bioterios = None
-
+async def historico(request: Request):
     conn = sqlite3.connect("leituras.db")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-
-    query = """
-        SELECT id, data_captura, Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia,
+    c.execute("""
+        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia,
                SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
                SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
                SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
@@ -327,31 +348,51 @@ async def historico(request: Request, user = Depends(get_current_user)):
                Falha_SL5_T, Falha_SL5_RH, Falha_SL5_Luz,
                Falha_SL6_T, Falha_SL6_RH, Falha_SL6_Luz,
                Falha_SL7_T, Falha_SL7_RH, Falha_SL7_Luz,
-               Falha_SL8_T, Falha_SL8_RH, Falha_SL8_Luz,
-               raw_bloco
-        FROM leituras
-    """
-    params = []
-
-    if bioterios:
-        placeholders = ','.join('?' for _ in bioterios)
-        query += f" WHERE Local IN ({placeholders})"
-        params.extend(bioterios)
-
-    query += " ORDER BY id DESC LIMIT 300"
-    c.execute(query, params)
-
+               Falha_SL8_T, Falha_SL8_RH, Falha_SL8_Luz
+        FROM leituras 
+        ORDER BY id ASC 
+        LIMIT 150
+    """)
     rows = c.fetchall()
-    # Filtra headers removendo Alarme e raw_bloco
-    headers = [desc[0] for desc in c.description if desc[0] not in ('Alarme', 'raw_bloco')]
+    headers = [desc[0] for desc in c.description]
     conn.close()
 
     return templates.TemplateResponse("historico.html", {
         "request": request,
         "headers": headers,
-        "rows": rows,
-        "user": user
+        "rows": rows
     })
+
+@app.get("/export-csv")
+async def export_csv():
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    c.execute("""
+        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia,
+               SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
+               SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
+               SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
+               SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
+               data_captura
+        FROM leituras 
+        ORDER BY id DESC 
+        LIMIT 150
+    """)
+    rows = c.fetchall()
+    headers = [desc[0] for desc in c.description]
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)  
+    writer.writerows(rows)    
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=historico_leituras.csv"}
+    )
+
 
 @app.post("/api/receber")
 async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):

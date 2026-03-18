@@ -1,80 +1,106 @@
 import re
+import json
+import os
+from dotenv import load_dotenv
+from twilio.rest import Client
 
-def parse_dados(bloco: str) -> dict:
+load_dotenv()
+
+account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
+
+TWILIO_CLIENT = Client(account_sid, auth_token) if all([account_sid, auth_token, TWILIO_FROM]) else None
+
+def parse_dados(bloco: str):
     bloco = bloco.strip()
+    if not bloco:
+        return None
     bloco_upper = bloco.upper()
-
-    local = ""
+    is_ligando = "LIGANDO" in bloco_upper
+    is_alarme = "ALARME" in bloco_upper
     if '|' in bloco:
         local = bloco.rsplit('|', 1)[-1].strip()
+    elif re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
+        local = "BIOTERIO_UFMG"
+    elif "LAMMEBIO" in bloco_upper:
+        local = "LAMMEBIO"
     else:
-        if re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
-            local = "BIOTERIO_UFMG"
-        elif re.search(r'LAMMEBIO', bloco_upper):
-            local = "LAMMEBIO"
-        else:
-            local = "DESCONHECIDO"
-
+        local = "DESCONHECIDO"
+    m_ts = re.search(r'@(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})@', bloco)
+    if not m_ts:
+        m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
+    timestamp = m_ts.group(1) if m_ts else ""
+    if is_alarme and TWILIO_CLIENT:
+        try:
+            if '@' in bloco:
+                alarme_content = bloco.split('@', 2)[2] if len(bloco.split('@', 2)) > 2 else bloco
+            else:
+                alarme_content = bloco
+            if '|' in alarme_content:
+                alarme_content = alarme_content.rsplit('|', 1)[0].strip()
+            var1 = f"{local}_{alarme_content.strip()}"
+            var2 = timestamp
+            TWILIO_CLIENT.messages.create(
+                from_=TWILIO_FROM,
+                to="whatsapp:+5561999182112",
+                content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
+                content_variables=json.dumps({"1": var1, "2": var2})
+            )
+        except:
+            pass
+        return None
+    if is_ligando:
+        return None
     dados = {
-        "Timestamp": "",
+        "Timestamp": timestamp,
         "Local": local,
         "Sensor_ID": "",
         "Sinal": "",
         "VBAT": "",
         "Energia": "",
-        "Alarme": "Não",
-        "Alarme_Detalhe": "",
-        "Falhas_SL": {}
+        "Falhas_SL": {},
+        "SL1_T": "", "SL1_RH": "", "SL1_Luz": "",
+        "SL2_T": "", "SL2_RH": "", "SL2_Luz": "",
+        "SL3_T": "", "SL3_RH": "", "SL3_Luz": "",
+        "SL4_T": "", "SL4_RH": "", "SL4_Luz": "",
+        "SL5_T": "", "SL5_RH": "", "SL5_Luz": "",
+        "SL6_T": "", "SL6_RH": "", "SL6_Luz": "",
+        "SL7_T": "", "SL7_RH": "", "SL7_Luz": "",
+        "SL8_T": "", "SL8_RH": "", "SL8_Luz": ""
     }
-
-    # Extrai timestamp sempre
-    m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
-    if m_ts:
-        dados["Timestamp"] = m_ts.group(1)
-
-    # Se tiver ALARME no bloco inteiro, captura detalhe após o segundo @
-    if 'ALARME' in bloco_upper:
-        dados["Alarme"] = "SIM"
-        partes = bloco.split('@')
-        if len(partes) >= 3:
-            detalhe = '@'.join(partes[2:]).split('|')[0].strip()
-            dados["Alarme_Detalhe"] = detalhe
-        else:
-            dados["Alarme_Detalhe"] = "ALARME DETECTADO"
-
-    # Extrai Sensor_ID, Sinal, VBAT, Energia (mesmo sem ID numérico inicial)
+    m_id = re.search(r'^(\d{4,6})@', bloco) or re.search(r'@(\d{4,6})@', bloco)
+    if m_id:
+        dados["Sensor_ID"] = m_id.group(1)
     partes = [p.strip() for p in bloco.split('@') if p.strip()]
-    if len(partes) >= 5:
-        # Sensor_ID: primeiro campo numérico longo após timestamp
-        m_sensor = re.search(r'@(\d{4,6})@', bloco)
-        if m_sensor:
-            dados["Sensor_ID"] = m_sensor.group(1)
-
-        # Sinal, VBAT, Energia: campos 3,4,5 após timestamp (ajustado pro novo formato)
-        if len(partes) >= 6:
-            dados["Sinal"] = partes[2] if len(partes) > 2 else ""
-            dados["VBAT"] = partes[3] if len(partes) > 3 else ""
-            dados["Energia"] = partes[4] if len(partes) > 4 else ""
-
-    # Extrai SLx_ (T, RH, Luz)
-    resto = bloco
+    for p in partes:
+        p_upper = p.upper()
+        if p_upper.startswith('SINAL_'):
+            dados["Sinal"] = p
+        elif p_upper.startswith('VBAT_'):
+            dados["VBAT"] = p
+        elif p_upper.startswith('ENERGIA_'):
+            dados["Energia"] = p
     for i in range(1, 9):
-        m_t_raw = re.search(rf'SL{i}_T:([^@|]+?)(?=@SL{i}_|@|\Z)', resto, re.IGNORECASE)
-        if m_t_raw:
-            raw_t = m_t_raw.group(1).strip()
-            valor_t = re.match(r'([\d.]+C?)', raw_t).group(1) if re.match(r'([\d.]+C?)', raw_t) else ""
-            dados[f"SL{i}_T"] = valor_t
-
-        m_rh_raw = re.search(rf'SL{i}_RH:([^@|]+?)(?=@SL{i}_|@|\Z)', resto, re.IGNORECASE)
-        if m_rh_raw:
-            raw_rh = m_rh_raw.group(1).strip()
-            valor_rh = re.match(r'([\d.]+%?)', raw_rh).group(1) if re.match(r'([\d.]+%?)', raw_rh) else ""
-            dados[f"SL{i}_RH"] = valor_rh
-
-        m_luz_raw = re.search(rf'SL{i}_(?:CLARO|ESCURO)([^@|]*?)(?=@SL{i}_|@|\Z)', resto, re.IGNORECASE)
-        if m_luz_raw:
-            raw_luz = m_luz_raw.group(0).strip()
-            valor_luz = re.search(r'(CLARO|ESCURO)', raw_luz, re.IGNORECASE).group(1).upper() if re.search(r'(CLARO|ESCURO)', raw_luz, re.IGNORECASE) else ""
-            dados[f"SL{i}_Luz"] = valor_luz
-
+        m_t = re.search(rf'SL{i}_T:([^@|]+?)(?=@SL{i}_|@|\Z)', bloco, re.IGNORECASE)
+        if m_t:
+            raw = m_t.group(1).strip()
+            valor = re.search(r'([\d.]+)', raw)
+            dados[f"SL{i}_T"] = valor.group(1) if valor else raw
+            if '_F' in raw.upper():
+                dados["Falhas_SL"][f"SL{i}_T"] = True
+        m_rh = re.search(rf'SL{i}_RH:([^@|]+?)(?=@SL{i}_|@|\Z)', bloco, re.IGNORECASE)
+        if m_rh:
+            raw = m_rh.group(1).strip()
+            valor = re.search(r'([\d.]+)', raw)
+            dados[f"SL{i}_RH"] = valor.group(1) if valor else raw
+            if '_F' in raw.upper():
+                dados["Falhas_SL"][f"SL{i}_RH"] = True
+        m_luz = re.search(rf'SL{i}_(?:CLARO|ESCURO)([^@|]*?)(?=@SL{i}_|@|\Z)', bloco, re.IGNORECASE)
+        if m_luz:
+            raw = m_luz.group(0).strip()
+            status = re.search(r'(CLARO|ESCURO)', raw, re.IGNORECASE)
+            dados[f"SL{i}_Luz"] = status.group(1).upper() if status else ""
+            if '_F' in raw.upper():
+                dados["Falhas_SL"][f"SL{i}_Luz"] = True
     return dados

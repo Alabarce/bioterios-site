@@ -2,12 +2,12 @@ import sqlite3
 from datetime import datetime
 from passlib.context import CryptContext
 
+
 DB = "leituras.db"
 
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    
     c.execute('''
         CREATE TABLE IF NOT EXISTS leituras (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,7 +18,6 @@ def init_db():
             Sinal           TEXT,
             VBAT            TEXT,
             Energia         TEXT,
-            Alarme          TEXT,
             SL1_T           TEXT, SL1_RH TEXT, SL1_Luz TEXT,
             SL2_T           TEXT, SL2_RH TEXT, SL2_Luz TEXT,
             SL3_T           TEXT, SL3_RH TEXT, SL3_Luz TEXT,
@@ -38,76 +37,37 @@ def init_db():
             raw_bloco       TEXT
         )
     ''')
-    
+    conn.commit()
+    conn.close()
+
+def init_usuarios():
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            username        TEXT UNIQUE NOT NULL,
-            password_hash   TEXT NOT NULL,
-            role            TEXT NOT NULL DEFAULT 'cliente',
-            ativo           INTEGER DEFAULT 1,
-            phones          TEXT DEFAULT '',
-            bioterios       TEXT DEFAULT '',
-            criado_em       TEXT DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'cliente',
+            ativo INTEGER DEFAULT 1,
+            criado_em TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS alertas_enviados (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            local           TEXT,
-            timestamp       DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS ultimo_alarme (
-            local           TEXT PRIMARY KEY,
-            alarme_detalhe  TEXT,
-            timestamp       TEXT,
-            data_captura    TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
     conn.commit()
     
-    # Cria admin padrão se não existir
     c.execute("SELECT COUNT(*) FROM usuarios WHERE username = 'admin'")
     if c.fetchone()[0] == 0:
+        from passlib.context import CryptContext
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        hash_senha = pwd_context.hash("bioterio")
-        c.execute(
-            "INSERT INTO usuarios (username, password_hash, role) VALUES (?, ?, ?)",
-            ("admin", hash_senha, "admin")
-        )
+        hash_senha = pwd_context.hash("bioterio")  
+        c.execute("INSERT INTO usuarios (username, password_hash, role) VALUES (?, ?, ?)",
+                  ("admin", hash_senha, "admin"))
         conn.commit()
-    
     conn.close()
-
-def get_phones_for_local(local: str):
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("SELECT phones FROM usuarios WHERE bioterios LIKE ? AND ativo = 1", (f"%{local}%",))
-    results = c.fetchall()
-    conn.close()
-    
-    phones = []
-    for row in results:
-        if row[0]:
-            phones.extend([p.strip() for p in row[0].split(',') if p.strip()])
-    return phones
-
-def get_bioterios_for_user(username: str):
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("SELECT bioterios FROM usuarios WHERE username = ? AND ativo = 1", (username,))
-    row = c.fetchone()
-    conn.close()
-    if row and row[0]:
-        return [b.strip() for b in row[0].split(',') if b.strip()]
-    return []
 
 def salvar(dados: dict, raw_bloco: str = ""):
+    if not dados:
+        return
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     
@@ -121,7 +81,6 @@ def salvar(dados: dict, raw_bloco: str = ""):
         'Sinal': dados.get("Sinal", ""),
         'VBAT': dados.get("VBAT", ""),
         'Energia': dados.get("Energia", ""),
-        'Alarme': dados.get("Alarme", "Não"),
         'SL1_T': dados.get("SL1_T", ""), 'SL1_RH': dados.get("SL1_RH", ""), 'SL1_Luz': dados.get("SL1_Luz", ""),
         'SL2_T': dados.get("SL2_T", ""), 'SL2_RH': dados.get("SL2_RH", ""), 'SL2_Luz': dados.get("SL2_Luz", ""),
         'SL3_T': dados.get("SL3_T", ""), 'SL3_RH': dados.get("SL3_RH", ""), 'SL3_Luz': dados.get("SL3_Luz", ""),

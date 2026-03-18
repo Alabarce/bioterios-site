@@ -4,13 +4,13 @@
 <h1 class="mb-4">Histórico de Leituras</h1>
 
 {% if rows %}
-<div class="table-responsive" style="max-height: 70vh; overflow: auto;">
+<div class="table-responsive" style="max-height: 75vh; overflow: auto;">
     <table class="table table-bordered table-hover modern-table">
         <thead class="table-light sticky-top">
             <tr>
                 {% for header in headers %}
-                    {% if 'Falha_' not in header %}
-                        <th scope="col">{{ header }}</th>
+                    {% if not header.startswith('Falha_') and header != 'data_captura' %}
+                        <th>{{ header }}</th>
                     {% endif %}
                 {% endfor %}
             </tr>
@@ -18,43 +18,18 @@
         <tbody>
             {% for row in rows %}
             <tr>
-                {% set col_idx = namespace(value=0) %}
+                {% set row_dict = {} %}
+                {% for h in headers %}
+                    {% set _ = row_dict.update({h: row[loop.index0]}) %}
+                {% endfor %}
                 {% for header in headers %}
-                    {% if 'Falha_' not in header %}
-                        {% set value = row[col_idx.value] %}
-                        {% set is_fail = false %}
-                        {% if header == 'SL1_T' and row[headers.index('Falha_SL1_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL1_RH' and row[headers.index('Falha_SL1_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL1_Luz' and row[headers.index('Falha_SL1_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL2_T' and row[headers.index('Falha_SL2_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL2_RH' and row[headers.index('Falha_SL2_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL2_Luz' and row[headers.index('Falha_SL2_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL3_T' and row[headers.index('Falha_SL3_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL3_RH' and row[headers.index('Falha_SL3_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL3_Luz' and row[headers.index('Falha_SL3_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL4_T' and row[headers.index('Falha_SL4_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL4_RH' and row[headers.index('Falha_SL4_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL4_Luz' and row[headers.index('Falha_SL4_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL5_T' and row[headers.index('Falha_SL5_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL5_RH' and row[headers.index('Falha_SL5_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL5_Luz' and row[headers.index('Falha_SL5_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL6_T' and row[headers.index('Falha_SL6_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL6_RH' and row[headers.index('Falha_SL6_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL6_Luz' and row[headers.index('Falha_SL6_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL7_T' and row[headers.index('Falha_SL7_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL7_RH' and row[headers.index('Falha_SL7_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL7_Luz' and row[headers.index('Falha_SL7_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL8_T' and row[headers.index('Falha_SL8_T')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL8_RH' and row[headers.index('Falha_SL8_RH')] == 1 %}{% set is_fail = true %}{% endif %}
-                        {% if header == 'SL8_Luz' and row[headers.index('Falha_SL8_Luz')] == 1 %}{% set is_fail = true %}{% endif %}
-                        <td class="{% if is_fail %}bg-danger-subtle text-danger fw-bold{% else %}bg-white{% endif %}">
-                            {% if value is none or value == '' %}
-                                -
-                            {% else %}
-                                {{ value }}
-                            {% endif %}
+                    {% if not header.startswith('Falha_') and header != 'data_captura' %}
+                        {% set value = row_dict.get(header, '') %}
+                        {% set falha_key = 'Falha_' + header %}
+                        {% set is_fail = row_dict.get(falha_key) == 1 %}
+                        <td class="{% if is_fail %}bg-danger text-white fw-bold{% else %}{% endif %}">
+                            {% if value is none or value == '' or value == 'None' %}-{% else %}{{ value }}{% endif %}
                         </td>
-                        {% set col_idx.value = col_idx.value + 1 %}
                     {% endif %}
                 {% endfor %}
             </tr>
@@ -62,9 +37,8 @@
         </tbody>
     </table>
 </div>
-<div class="mt-3 text-muted small">
+<div class="mt-3 text-muted small text-end">
     Mostrando as últimas {{ rows|length }} leituras.
-    <a href="/export-csv" class="text-primary fw-bold">Baixar CSV completo</a>
 </div>
 {% else %}
 <div class="alert alert-info text-center">

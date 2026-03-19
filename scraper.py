@@ -8,8 +8,6 @@ from database import salvar, ja_processado, ja_enviado_alarme, registrar_alarme_
 URL = "https://i9biotech.com.br/monitor_bioterios/index.php?op=4"
 INTERVALO_MINUTOS = 4
 
-enviados_recentes = set()
-
 def limpar_texto_html(texto):
     texto = re.sub(r'<br\s*/?>', '\n', texto, flags=re.IGNORECASE)
     texto = re.sub(r'<[^>]+>', '', texto)
@@ -21,8 +19,7 @@ def extrair_mensagens():
     try:
         r = requests.get(URL, timeout=15, headers=headers)
         r.raise_for_status()
-    except Exception as e:
-        print(f"[{datetime.now()}] Erro ao acessar i9biotech: {e}")
+    except:
         return []
     texto_limpo = limpar_texto_html(r.text)
     linhas = texto_limpo.splitlines()
@@ -34,27 +31,30 @@ def extrair_mensagens():
     return list(dict.fromkeys(mensagens))
 
 def rodar_scraper():
-    global enviados_recentes
-    print(f"[{datetime.now()}] Scraper iniciado em background")
     while True:
         mensagens = extrair_mensagens()
         novas = 0
         for bloco in mensagens:
+            bloco = bloco.strip()
+            
+            is_alarme = 'ALARME' in bloco.upper() or 'EQUIPAMENTO_LIGANDO' in bloco.upper()
+            
+            if is_alarme:
+                local = "LAMMEBIO" if "LAMMEBIO" in bloco.upper() else "BIOTERIO_UFMG" if "UFMG" in bloco.upper() else "DESCONHECIDO"
+                if ja_enviado_alarme(local, bloco):
+                    continue
+                registrar_alarme_enviado(local, bloco, "")
+            
             dados = parse_dados(bloco)
             if not dados:
                 continue
 
-            local = dados.get("Local", "").strip()
-            alarme_detalhe = dados.get("Alarme_Detalhe", "").strip()
-            chave = f"{local}|{alarme_detalhe}"
-
             if dados.get("Alarme") == "SIM":
-                if not alarme_detalhe or chave in enviados_recentes:
-                    continue
-                if ja_enviado_alarme(local, alarme_detalhe):
+                local = dados.get("Local", "")
+                alarme_detalhe = dados.get("Alarme_Detalhe", "")
+                if alarme_detalhe and ja_enviado_alarme(local, alarme_detalhe):
                     continue
                 registrar_alarme_enviado(local, alarme_detalhe, dados.get("Timestamp", ""))
-                enviados_recentes.add(chave)
             else:
                 timestamp = dados.get("Timestamp", "")
                 sensor_id = dados.get("Sensor_ID", "")
@@ -65,9 +65,7 @@ def rodar_scraper():
             novas += 1
             try:
                 requests.post("http://127.0.0.1:8000/api/receber", data=bloco, headers={"Content-Type": "text/plain"}, timeout=10)
-                print(f"[{datetime.now()}] ✅ ENVIADO: {bloco[:80]}...")
             except:
                 pass
 
-        print(f"[{datetime.now()}] Scraper: {novas} novas mensagens processadas")
         time.sleep(INTERVALO_MINUTOS * 60)

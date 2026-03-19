@@ -25,7 +25,6 @@ def ja_existe_no_banco(raw_bloco):
     return existe
 
 def rodar_scraper():
-    print(f"[{datetime.now()}] Scraper iniciado em background")
     while True:
         headers = {"User-Agent": "Mozilla/5.0"}
         try:
@@ -60,5 +59,4 @@ def rodar_scraper():
             except:
                 pass
 
-        print(f"[{datetime.now()}] Scraper: {novas} novas mensagens processadas")
         time.sleep(INTERVALO_MINUTOS * 60)

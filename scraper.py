@@ -1,5 +1,4 @@
 import requests
-import sqlite3
 import re
 import time
 from datetime import datetime
@@ -26,13 +25,14 @@ def extrair_mensagens():
     texto_limpo = limpar_texto_html(r.text)
     linhas = texto_limpo.splitlines()
     mensagens = []
-    for linha in reversed(linhas[-80:]):
+    for linha in reversed(linhas[-120:]):
         linha = linha.strip()
         if not linha:
             continue
-        if '@' in linha or 'EQUIPAMENTO_LIGANDO' in linha.upper() or 'ALARME' in linha.upper():
+        if ('@' in linha) or ('ALARME' in linha.upper()) or ('EQUIPAMENTO_LIGANDO' in linha.upper()) or re.search(r'^\d{4,6}@', linha):
             mensagens.append(linha)
-    return list(dict.fromkeys(mensagens))
+    mensagens = list(dict.fromkeys(mensagens))
+    return mensagens
 
 def rodar_scraper():
     print(f"[{datetime.now()}] Scraper iniciado em background")
@@ -41,6 +41,8 @@ def rodar_scraper():
         novas = 0
         for bloco in mensagens:
             dados = parse_dados(bloco)
+            if not dados:
+                continue
             timestamp = dados.get("Timestamp", "")
             sensor_id = dados.get("Sensor_ID", "")
             local = dados.get("Local", "")

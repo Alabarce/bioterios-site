@@ -4,9 +4,9 @@ def parse_dados(bloco: str):
     bloco = bloco.strip()
     if not bloco:
         return None
+
     bloco_upper = bloco.upper()
     is_alarme = "ALARME" in bloco_upper or "EQUIPAMENTO_LIGANDO" in bloco_upper
-    is_ligando = "LIGANDO" in bloco_upper
 
     if '|' in bloco:
         local = bloco.rsplit('|', 1)[-1].strip()
@@ -17,7 +17,7 @@ def parse_dados(bloco: str):
     else:
         local = "DESCONHECIDO"
 
-    m_ts = re.search(r'@(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})@', bloco) or re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
+    m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
     timestamp = m_ts.group(1) if m_ts else ""
 
     dados = {

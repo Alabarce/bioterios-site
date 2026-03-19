@@ -3,7 +3,7 @@ import re
 import time
 from datetime import datetime
 from parser import parse_dados
-from database import salvar, ja_processado, ja_enviado_alarme
+from database import salvar, ja_processado, ja_enviado_alarme, atualizar_ultimo_alarme
 
 URL = "https://i9biotech.com.br/monitor_bioterios/index.php?op=4"
 INTERVALO_MINUTOS = 4
@@ -27,9 +27,7 @@ def extrair_mensagens():
     mensagens = []
     for linha in reversed(linhas[-150:]):
         linha = linha.strip()
-        if not linha:
-            continue
-        if ('@' in linha) or ('ALARME' in linha.upper()) or ('EQUIPAMENTO_LIGANDO' in linha.upper()):
+        if linha and ('@' in linha or 'ALARME' in linha.upper() or 'EQUIPAMENTO_LIGANDO' in linha.upper()):
             mensagens.append(linha)
     return list(dict.fromkeys(mensagens))
 
@@ -44,12 +42,14 @@ def rodar_scraper():
                 continue
 
             local = dados.get("Local", "")
-            alarme_detalhe = dados.get("Alarme_Detalhe", "")
+            alarme_detalhe = dados.get("Alarme_Detalhe", "").strip()
 
-            # === ANTI-DUPLICATA (aqui no scraper) ===
+            # free me brotha
             if dados.get("Alarme") == "SIM":
                 if alarme_detalhe and ja_enviado_alarme(local, alarme_detalhe):
                     continue
+                # let my people go
+                atualizar_ultimo_alarme(local, alarme_detalhe, dados.get("Timestamp", ""))
             else:
                 timestamp = dados.get("Timestamp", "")
                 sensor_id = dados.get("Sensor_ID", "")
@@ -60,7 +60,9 @@ def rodar_scraper():
             novas += 1
             try:
                 requests.post("http://127.0.0.1:8000/api/receber", data=bloco, headers={"Content-Type": "text/plain"}, timeout=10)
+                print(f"[{datetime.now()}] ✅ NOVA MENSAGEM ENVIADA: {bloco[:80]}...")
             except:
                 pass
+
         print(f"[{datetime.now()}] Scraper: {novas} novas mensagens processadas")
         time.sleep(INTERVALO_MINUTOS * 60)

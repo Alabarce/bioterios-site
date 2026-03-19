@@ -50,7 +50,7 @@ def parse_dados(bloco: str):
 
             TWILIO_CLIENT.messages.create(
                 from_=TWILIO_FROM,
-                to="whatsapp:+5561999182112",
+                to="whatsapp:+5511984264081",
                 content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
                 content_variables=json.dumps({"1": var1, "2": var2})
             )

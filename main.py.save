@@ -151,7 +151,7 @@ async def criar_usuario(
         conn.close()
         return templates.TemplateResponse("admin/usuarios.html", {
             "request": request,
-            "usuarios": [],  
+            "usuarios": [],  # ou busque novamente
             "user": user,
             "error": "Usuário já existe"
         })
@@ -375,7 +375,7 @@ async def export_csv():
     conn = sqlite3.connect("leituras.db")
     c = conn.cursor()
     c.execute("""
-        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
+        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia,
                SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
                SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
                SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
@@ -383,7 +383,7 @@ async def export_csv():
                data_captura
         FROM leituras 
         ORDER BY id DESC 
-        LIMIT 500
+        LIMIT 150
     """)
     rows = c.fetchall()
     headers = [desc[0] for desc in c.description]
@@ -391,8 +391,8 @@ async def export_csv():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(headers)
-    writer.writerows(rows)
+    writer.writerow(headers)  
+    writer.writerows(rows)    
 
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -400,9 +400,10 @@ async def export_csv():
         headers={"Content-Disposition": "attachment; filename=historico_leituras.csv"}
     )
 
+
 @app.post("/api/receber")
 async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
-    from parser import parse_dados 
+    from parser import parse_dados  # assumindo que você tem esse módulo
     dados = parse_dados(bloco)
     salvar(dados, bloco)
     notificar_clientes_sobre_alarme(dados)

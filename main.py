@@ -14,6 +14,10 @@ from dotenv import load_dotenv
 import os
 from twilio.rest import Client
 from database import init_db, salvar, get_phones_for_local, get_bioterios_for_user, get_ultimo_alarme, atualizar_ultimo_alarme
+from database import init_db, init_usuarios, salvar
+from parser import parse_dados
+import threading
+from scraper import rodar_scraper
 
 load_dotenv()
 
@@ -103,6 +107,10 @@ def enviar_alerta_whatsapp(telefone: str, var1: str, var2: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    init_usuarios()
+    scraper_thread = threading.Thread(target=rodar_scraper, daemon=True)
+    scraper_thread.start()
+    print("✅ Scraper iniciado em background")
     yield
 
 app = FastAPI(title="Monitor Bioterios", lifespan=lifespan)

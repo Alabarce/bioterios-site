@@ -65,6 +65,7 @@ def init_usuarios():
         conn.commit()
     conn.close()
 
+
 def salvar(dados: dict, raw_bloco: str = ""):
     if not dados:
         return
@@ -164,3 +165,11 @@ def get_bioterios_for_user(username: str):
     if row and row[0]:
         return [b.strip() for b in row[0].split(',') if b.strip()]
     return []
+
+def ja_processado(timestamp, sensor_id, local):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM leituras WHERE Timestamp = ? AND Sensor_ID = ? AND Local = ?", (timestamp, sensor_id, local))
+    existe = c.fetchone()[0] > 0
+    conn.close()
+    return existe

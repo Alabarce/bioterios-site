@@ -52,6 +52,8 @@ def init_db():
     conn.commit()
     conn.close()
 
+    init_raw_table()
+
 def init_usuarios():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -206,3 +208,39 @@ def ja_enviado_alarme(local: str, detalhe: str) -> bool:
     existe = c.fetchone()[0] > 0
     conn.close()
     return existe
+
+
+def init_raw_table():
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS raw (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            recebido_em     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            conteudo        TEXT UNIQUE NOT NULL,
+            processado      INTEGER DEFAULT 0
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+def registrar_raw_bloco(bloco: str) -> bool:
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    
+    try:
+        c.execute(
+            "INSERT INTO raw (conteudo) VALUES (?)",
+            (bloco.strip(),)
+        )
+        conn.commit()
+        conn.close()
+        return True   
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False
+    except Exception as e:
+        print(f"Erro ao registrar raw: {e}")
+        conn.close()
+        return False

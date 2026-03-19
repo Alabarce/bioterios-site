@@ -402,8 +402,9 @@ async def export_csv():
 
 @app.post("/api/receber")
 async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
-    from parser import parse_dados 
     dados = parse_dados(bloco)
+    if dados is None:
+        return {"status": "ignorado"}
     salvar(dados, bloco)
     notificar_clientes_sobre_alarme(dados)
     return {"status": "salvo"}

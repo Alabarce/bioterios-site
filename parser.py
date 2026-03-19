@@ -12,9 +12,16 @@ TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
 
 TWILIO_CLIENT = Client(account_sid, auth_token) if all([account_sid, auth_token, TWILIO_FROM]) else None
 
+import re
+import json
+from database import registrar_raw_bloco
+
 def parse_dados(bloco: str):
     bloco = bloco.strip()
     if not bloco:
+        return None
+
+    if not registrar_raw_bloco(bloco):
         return None
 
     bloco_upper = bloco.upper()
@@ -122,3 +129,5 @@ def parse_dados(bloco: str):
                 dados["Falhas_SL"][f"SL{i}_Luz"] = True
 
     return dados
+
+

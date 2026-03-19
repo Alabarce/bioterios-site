@@ -18,6 +18,8 @@ def init_db():
             Sinal           TEXT,
             VBAT            TEXT,
             Energia         TEXT,
+            Alarme          TEXT DEFAULT 'Não',
+            Alarme_Detalhe  TEXT,
             SL1_T           TEXT, SL1_RH TEXT, SL1_Luz TEXT,
             SL2_T           TEXT, SL2_RH TEXT, SL2_Luz TEXT,
             SL3_T           TEXT, SL3_RH TEXT, SL3_Luz TEXT,
@@ -37,9 +39,17 @@ def init_db():
             raw_bloco       TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ultimo_alarme (
+            local TEXT PRIMARY KEY,
+            alarme_detalhe TEXT,
+            timestamp TEXT,
+            data_captura TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
-
+    
 def init_usuarios():
     conn = sqlite3.connect(DB)
     c = conn.cursor()

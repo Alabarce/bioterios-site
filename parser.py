@@ -1,24 +1,13 @@
 import re
-import json
-import os
-from dotenv import load_dotenv
-from twilio.rest import Client
-
-load_dotenv()
-
-account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
-
-TWILIO_CLIENT = Client(account_sid, auth_token) if all([account_sid, auth_token, TWILIO_FROM]) else None
 
 def parse_dados(bloco: str):
     bloco = bloco.strip()
     if not bloco:
         return None
     bloco_upper = bloco.upper()
+    is_alarme = "ALARME" in bloco_upper or "EQUIPAMENTO_LIGANDO" in bloco_upper
     is_ligando = "LIGANDO" in bloco_upper
-    is_alarme = "ALARME" in bloco_upper
+
     if '|' in bloco:
         local = bloco.rsplit('|', 1)[-1].strip()
     elif re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
@@ -27,31 +16,10 @@ def parse_dados(bloco: str):
         local = "LAMMEBIO"
     else:
         local = "DESCONHECIDO"
-    m_ts = re.search(r'@(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})@', bloco)
-    if not m_ts:
-        m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
+
+    m_ts = re.search(r'@(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})@', bloco) or re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
     timestamp = m_ts.group(1) if m_ts else ""
-    if is_alarme and TWILIO_CLIENT:
-        try:
-            if '@' in bloco:
-                alarme_content = bloco.split('@', 2)[2] if len(bloco.split('@', 2)) > 2 else bloco
-            else:
-                alarme_content = bloco
-            if '|' in alarme_content:
-                alarme_content = alarme_content.rsplit('|', 1)[0].strip()
-            var1 = f"{local}_{alarme_content.strip()}"
-            var2 = timestamp
-            TWILIO_CLIENT.messages.create(
-                from_=TWILIO_FROM,
-                to="whatsapp:+5561999182112",
-                content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
-                content_variables=json.dumps({"1": var1, "2": var2})
-            )
-        except:
-            pass
-        return None
-    if is_ligando:
-        return None
+
     dados = {
         "Timestamp": timestamp,
         "Local": local,
@@ -59,6 +27,8 @@ def parse_dados(bloco: str):
         "Sinal": "",
         "VBAT": "",
         "Energia": "",
+        "Alarme": "SIM" if is_alarme else "Não",
+        "Alarme_Detalhe": bloco if is_alarme else "",
         "Falhas_SL": {},
         "SL1_T": "", "SL1_RH": "", "SL1_Luz": "",
         "SL2_T": "", "SL2_RH": "", "SL2_Luz": "",
@@ -69,9 +39,11 @@ def parse_dados(bloco: str):
         "SL7_T": "", "SL7_RH": "", "SL7_Luz": "",
         "SL8_T": "", "SL8_RH": "", "SL8_Luz": ""
     }
+
     m_id = re.search(r'^(\d{4,6})@', bloco) or re.search(r'@(\d{4,6})@', bloco)
     if m_id:
         dados["Sensor_ID"] = m_id.group(1)
+
     partes = [p.strip() for p in bloco.split('@') if p.strip()]
     for p in partes:
         p_upper = p.upper()
@@ -81,6 +53,7 @@ def parse_dados(bloco: str):
             dados["VBAT"] = p
         elif p_upper.startswith('ENERGIA_'):
             dados["Energia"] = p
+
     for i in range(1, 9):
         m_t = re.search(rf'SL{i}_T:([^@|]+?)(?=@SL{i}_|@|\Z)', bloco, re.IGNORECASE)
         if m_t:
@@ -103,4 +76,5 @@ def parse_dados(bloco: str):
             dados[f"SL{i}_Luz"] = status.group(1).upper() if status else ""
             if '_F' in raw.upper():
                 dados["Falhas_SL"][f"SL{i}_Luz"] = True
+
     return dados

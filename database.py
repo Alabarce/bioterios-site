@@ -49,7 +49,7 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    
+
 def init_usuarios():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -180,6 +180,15 @@ def ja_processado(timestamp, sensor_id, local):
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM leituras WHERE Timestamp = ? AND Sensor_ID = ? AND Local = ?", (timestamp, sensor_id, local))
+    existe = c.fetchone()[0] > 0
+    conn.close()
+    return existe
+
+def ja_enviado_alarme(local: str, detalhe: str) -> bool:
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM ultimo_alarme WHERE local = ? AND alarme_detalhe = ?", 
+              (local, detalhe))
     existe = c.fetchone()[0] > 0
     conn.close()
     return existe

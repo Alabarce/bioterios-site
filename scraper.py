@@ -3,7 +3,7 @@ import re
 import time
 from datetime import datetime
 from parser import parse_dados
-from database import salvar, ja_processado
+from database import salvar, ja_processado, ja_enviado_alarme
 
 URL = "https://i9biotech.com.br/monitor_bioterios/index.php?op=4"
 INTERVALO_MINUTOS = 4
@@ -25,11 +25,11 @@ def extrair_mensagens():
     texto_limpo = limpar_texto_html(r.text)
     linhas = texto_limpo.splitlines()
     mensagens = []
-    for linha in reversed(linhas[-120:]):
+    for linha in reversed(linhas[-150:]):
         linha = linha.strip()
         if not linha:
             continue
-        if ('@' in linha) or ('ALARME' in linha.upper()) or ('EQUIPAMENTO_LIGANDO' in linha.upper()) or re.search(r'^\d{4,6}@', linha):
+        if ('@' in linha) or ('ALARME' in linha.upper()) or ('EQUIPAMENTO_LIGANDO' in linha.upper()):
             mensagens.append(linha)
     return list(dict.fromkeys(mensagens))
 
@@ -39,38 +39,28 @@ def rodar_scraper():
         mensagens = extrair_mensagens()
         novas = 0
         for bloco in mensagens:
-            dados = parse_dados(bloco) 
-
+            dados = parse_dados(bloco)
             if not dados:
                 continue
 
-            timestamp = dados.get("Timestamp", "")
-            sensor_id = dados.get("Sensor_ID", "")
             local = dados.get("Local", "")
+            alarme_detalhe = dados.get("Alarme_Detalhe", "")
 
-          
-            if not timestamp or not local:
-                continue
-
-            
-            if sensor_id:
-                if ja_processado(timestamp, sensor_id, local):
-                    break
+            # === ANTI-DUPLICATA (aqui no scraper) ===
+            if dados.get("Alarme") == "SIM":
+                if alarme_detalhe and ja_enviado_alarme(local, alarme_detalhe):
+                    continue
             else:
-                if ja_processado(timestamp, "ALARM", local):
-                    break
+                timestamp = dados.get("Timestamp", "")
+                sensor_id = dados.get("Sensor_ID", "")
+                if not timestamp or not sensor_id or ja_processado(timestamp, sensor_id, local):
+                    continue
 
             salvar(dados, bloco)
             novas += 1
-
             try:
-                requests.post("http://127.0.0.1:8000/api/receber", 
-                            data=bloco, 
-                            headers={"Content-Type": "text/plain"}, 
-                            timeout=10)
-                print(f"[{datetime.now()}] Enviado para API: {bloco[:70]}...")
-            except Exception as e:
-                print(f"[{datetime.now()}] Erro ao enviar API: {e}")
-
+                requests.post("http://127.0.0.1:8000/api/receber", data=bloco, headers={"Content-Type": "text/plain"}, timeout=10)
+            except:
+                pass
         print(f"[{datetime.now()}] Scraper: {novas} novas mensagens processadas")
         time.sleep(INTERVALO_MINUTOS * 60)

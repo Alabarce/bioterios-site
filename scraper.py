@@ -31,8 +31,7 @@ def extrair_mensagens():
             continue
         if ('@' in linha) or ('ALARME' in linha.upper()) or ('EQUIPAMENTO_LIGANDO' in linha.upper()) or re.search(r'^\d{4,6}@', linha):
             mensagens.append(linha)
-    mensagens = list(dict.fromkeys(mensagens))
-    return mensagens
+    return list(dict.fromkeys(mensagens))
 
 def rodar_scraper():
     print(f"[{datetime.now()}] Scraper iniciado em background")
@@ -40,21 +39,38 @@ def rodar_scraper():
         mensagens = extrair_mensagens()
         novas = 0
         for bloco in mensagens:
-            dados = parse_dados(bloco)
+            dados = parse_dados(bloco) 
+
             if not dados:
                 continue
+
             timestamp = dados.get("Timestamp", "")
             sensor_id = dados.get("Sensor_ID", "")
             local = dados.get("Local", "")
-            if not timestamp or not sensor_id:
+
+          
+            if not timestamp or not local:
                 continue
-            if ja_processado(timestamp, sensor_id, local):
-                break
+
+            
+            if sensor_id:
+                if ja_processado(timestamp, sensor_id, local):
+                    break
+            else:
+                if ja_processado(timestamp, "ALARM", local):
+                    break
+
             salvar(dados, bloco)
             novas += 1
+
             try:
-                requests.post("http://127.0.0.1:8000/api/receber", data=bloco, headers={"Content-Type": "text/plain"}, timeout=10)
-            except:
-                pass
+                requests.post("http://127.0.0.1:8000/api/receber", 
+                            data=bloco, 
+                            headers={"Content-Type": "text/plain"}, 
+                            timeout=10)
+                print(f"[{datetime.now()}] Enviado para API: {bloco[:70]}...")
+            except Exception as e:
+                print(f"[{datetime.now()}] Erro ao enviar API: {e}")
+
         print(f"[{datetime.now()}] Scraper: {novas} novas mensagens processadas")
         time.sleep(INTERVALO_MINUTOS * 60)

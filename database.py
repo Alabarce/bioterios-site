@@ -40,11 +40,13 @@ def init_db():
         )
     ''')
     c.execute('''
-        CREATE TABLE IF NOT EXISTS ultimo_alarme (
-            local TEXT PRIMARY KEY,
-            alarme_detalhe TEXT,
+        CREATE TABLE IF NOT EXISTS alarmes_enviados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            local TEXT NOT NULL,
+            alarme_detalhe TEXT NOT NULL,
             timestamp TEXT,
-            data_captura TEXT DEFAULT CURRENT_TIMESTAMP
+            data_captura TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(local, alarme_detalhe)
         )
     ''')
     conn.commit()
@@ -184,11 +186,23 @@ def ja_processado(timestamp, sensor_id, local):
     conn.close()
     return existe
 
+def registrar_alarme_enviado(local: str, detalhe: str, timestamp: str):
+    if not detalhe or not local:
+        return
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute('''
+        INSERT OR IGNORE INTO alarmes_enviados (local, alarme_detalhe, timestamp)
+        VALUES (?, ?, ?)
+    ''', (local, detalhe, timestamp))
+    conn.commit()
+    conn.close()
+
+
 def ja_enviado_alarme(local: str, detalhe: str) -> bool:
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM ultimo_alarme WHERE local = ? AND alarme_detalhe = ?", 
-              (local, detalhe))
+    c.execute("SELECT COUNT(*) FROM alarmes_enviados WHERE local = ? AND alarme_detalhe = ?", (local, detalhe))
     existe = c.fetchone()[0] > 0
     conn.close()
     return existe

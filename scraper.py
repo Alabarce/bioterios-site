@@ -44,12 +44,10 @@ def rodar_scraper():
             local = dados.get("Local", "")
             alarme_detalhe = dados.get("Alarme_Detalhe", "").strip()
 
-            # free me brotha
             if dados.get("Alarme") == "SIM":
                 if alarme_detalhe and ja_enviado_alarme(local, alarme_detalhe):
                     continue
-                # let my people go
-                atualizar_ultimo_alarme(local, alarme_detalhe, dados.get("Timestamp", ""))
+                registrar_alarme_enviado(local, alarme_detalhe, dados.get("Timestamp", ""))
             else:
                 timestamp = dados.get("Timestamp", "")
                 sensor_id = dados.get("Sensor_ID", "")
@@ -60,7 +58,7 @@ def rodar_scraper():
             novas += 1
             try:
                 requests.post("http://127.0.0.1:8000/api/receber", data=bloco, headers={"Content-Type": "text/plain"}, timeout=10)
-                print(f"[{datetime.now()}] ✅ NOVA MENSAGEM ENVIADA: {bloco[:80]}...")
+                print(f"[{datetime.now()}] NOVA MENSAGEM ENVIADA: {bloco[:80]}...")
             except:
                 pass
 

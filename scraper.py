@@ -3,10 +3,12 @@ import re
 import time
 from datetime import datetime
 from parser import parse_dados
-from database import salvar, ja_processado, ja_enviado_alarme, atualizar_ultimo_alarme
+from database import salvar, ja_processado, ja_enviado_alarme, registrar_alarme_enviado
 
 URL = "https://i9biotech.com.br/monitor_bioterios/index.php?op=4"
 INTERVALO_MINUTOS = 4
+
+enviados_recentes = set()
 
 def limpar_texto_html(texto):
     texto = re.sub(r'<br\s*/?>', '\n', texto, flags=re.IGNORECASE)
@@ -32,6 +34,7 @@ def extrair_mensagens():
     return list(dict.fromkeys(mensagens))
 
 def rodar_scraper():
+    global enviados_recentes
     print(f"[{datetime.now()}] Scraper iniciado em background")
     while True:
         mensagens = extrair_mensagens()
@@ -41,13 +44,17 @@ def rodar_scraper():
             if not dados:
                 continue
 
-            local = dados.get("Local", "")
+            local = dados.get("Local", "").strip()
             alarme_detalhe = dados.get("Alarme_Detalhe", "").strip()
+            chave = f"{local}|{alarme_detalhe}"
 
             if dados.get("Alarme") == "SIM":
-                if alarme_detalhe and ja_enviado_alarme(local, alarme_detalhe):
+                if not alarme_detalhe or chave in enviados_recentes:
+                    continue
+                if ja_enviado_alarme(local, alarme_detalhe):
                     continue
                 registrar_alarme_enviado(local, alarme_detalhe, dados.get("Timestamp", ""))
+                enviados_recentes.add(chave)
             else:
                 timestamp = dados.get("Timestamp", "")
                 sensor_id = dados.get("Sensor_ID", "")
@@ -58,7 +65,7 @@ def rodar_scraper():
             novas += 1
             try:
                 requests.post("http://127.0.0.1:8000/api/receber", data=bloco, headers={"Content-Type": "text/plain"}, timeout=10)
-                print(f"[{datetime.now()}] NOVA MENSAGEM ENVIADA: {bloco[:80]}...")
+                print(f"[{datetime.now()}] ✅ ENVIADO: {bloco[:80]}...")
             except:
                 pass
 

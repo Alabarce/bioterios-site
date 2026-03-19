@@ -6,7 +6,7 @@ from parser import parse_dados
 from database import salvar, ja_processado, ja_enviado_alarme, registrar_alarme_enviado
 
 URL = "https://i9biotech.com.br/monitor_bioterios/index.php?op=4"
-INTERVALO_MINUTOS = 4
+INTERVALO_MINUTOS = 1
 
 def limpar_texto_html(texto):
     texto = re.sub(r'<br\s*/?>', '\n', texto, flags=re.IGNORECASE)
@@ -45,6 +45,7 @@ def rodar_scraper():
                     continue
                 registrar_alarme_enviado(local, bloco, "")
             
+            # Só chama o parser DEPOIS da checagem de duplicata
             dados = parse_dados(bloco)
             if not dados:
                 continue
@@ -58,6 +59,7 @@ def rodar_scraper():
             else:
                 timestamp = dados.get("Timestamp", "")
                 sensor_id = dados.get("Sensor_ID", "")
+                local = dados.get("Local", "")
                 if not timestamp or not sensor_id or ja_processado(timestamp, sensor_id, local):
                     continue
 

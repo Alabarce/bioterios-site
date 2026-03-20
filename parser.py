@@ -14,27 +14,36 @@ TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
 
 TWILIO_CLIENT = Client(account_sid, auth_token) if all([account_sid, auth_token, TWILIO_FROM]) else None
 
-def enviar_sms_para_grupo(local, var1, var2):
+def enviar_sms_para_grupo(local: str, var1: str, var2: str):
+    print(f"[DEBUG TWILIO] Iniciando envio para local: {local}")
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT telefone FROM usuarios WHERE ativo = 1 AND bioterios LIKE ? AND telefone IS NOT NULL", ('%' + local + '%',))
+    c.execute("SELECT telefone FROM usuarios WHERE bioterios LIKE ? AND ativo = 1 AND telefone IS NOT NULL", (f"%{local}%",))
     usuarios = c.fetchall()
     conn.close()
 
+    print(f"[DEBUG TWILIO] Usuários encontrados: {len(usuarios)} | Telefones: {[u[0] for u in usuarios]}")
+
     if not TWILIO_CLIENT:
+        print("[DEBUG TWILIO] ERRO: TWILIO_CLIENT é None (verifique .env)")
         return
+
     for row in usuarios:
-        telefone = row[0]
-        if telefone:
-            try:
-                TWILIO_CLIENT.messages.create(
-                    from_=TWILIO_FROM,
-                    to=telefone,
-                    content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
-                    content_variables=json.dumps({"1": var1, "2": var2})
-                )
-            except:
-                pass
+        telefone = row[0].strip()
+        if not telefone.startswith("+"):
+            telefone = "+" + telefone
+        print(f"[DEBUG TWILIO] Tentando enviar para: {telefone}")
+
+        try:
+            msg = TWILIO_CLIENT.messages.create(
+                from_=TWILIO_FROM,
+                to=f"whatsapp:{telefone}",
+                content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
+                content_variables=json.dumps({"1": var1, "2": var2})
+            )
+            print(f"[DEBUG TWILIO] SUCESSO! SID: {msg.sid} para {telefone}")
+        except Exception as e:
+            print(f"[DEBUG TWILIO] ERRO ao enviar para {telefone}: {str(e)}")
 
 
 import sys

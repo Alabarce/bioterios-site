@@ -38,25 +38,29 @@ def enviar_sms_para_grupo(local, var1, var2):
 
 
 def parse_dados(bloco: str):
-    # recebe a string do scraper/postman
+    print(f"[DEBUG] Bloco recebido: {bloco[:120]}...")
+
     bloco = bloco.strip()
     if not bloco:
+        print("[DEBUG] Bloco vazio - retornando None")
         return None
 
     bloco_upper = bloco.upper()
+    is_alarme = "ALARME" in bloco_upper
+    is_ligando = "EQUIPAMENTO_LIGANDO" in bloco_upper
 
-    # ->se detecta LIGANDO: pass/terminafunção
-    if "EQUIPAMENTO_LIGANDO" in bloco_upper:
+    print(f"[DEBUG] is_alarme={is_alarme} | is_ligando={is_ligando}")
+
+    if is_ligando:
+        print("[DEBUG] Ignorando: EQUIPAMENTO_LIGANDO")
         return None
 
-    # ->se detecta ALARME:
-    is_alarme = "ALARME" in bloco_upper
     if is_alarme:
-        # ->verifica se o raw_bloco tem duplicatas
+        print("[DEBUG] ALARME detectado - verificando raw")
         if not registrar_raw_bloco(bloco):
-            return None  # caso sim, termina a função parse_dados
+            print("[DEBUG] Duplicata no raw - retornando None")
+            return None
 
-        # -> DETECTA LOCAL (última parte da string)
         if '|' in bloco:
             parts = [p.strip() for p in bloco.split('|') if p.strip()]
             local = parts[-1] if parts else "DESCONHECIDO"
@@ -67,21 +71,23 @@ def parse_dados(bloco: str):
         else:
             local = "DESCONHECIDO"
 
-        # -> faz a função para jogar o json para o twilio, isolando as variáveis, para usuarios cadastrados em LOCAL DETECTADO no passo acima
+        print(f"[DEBUG] Local extraído: {local}")
+
         m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
         timestamp = m_ts.group(1) if m_ts else ""
         var1 = f"{local} - {bloco[:150]}"
         var2 = timestamp
+
+        print("[DEBUG] Chamando enviar_sms_para_grupo...")
         enviar_sms_para_grupo(local, var1, var2)
-
-        return None  # alarme tratado → não salva na leituras (não aparece no histórico/export)
-
-    # ->else (não alarme/ligandoequipamento)
-    # processa os dados como está agora
-    if not registrar_raw_bloco(bloco):
+        print("[DEBUG] SMS enviado (tentativa concluída)")
         return None
 
-    # extração do local para leituras normais
+    print("[DEBUG] Leitura normal - processando")
+    if not registrar_raw_bloco(bloco):
+        print("[DEBUG] Duplicata em leitura normal - retornando None")
+        return None
+
     if '|' in bloco:
         parts = [p.strip() for p in bloco.split('|') if p.strip()]
         local = parts[-1] if parts else "DESCONHECIDO"

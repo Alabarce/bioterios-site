@@ -38,27 +38,19 @@ def enviar_sms_para_grupo(local, var1, var2):
 
 
 def parse_dados(bloco: str):
-    print(f"[DEBUG] Bloco recebido: {bloco[:120]}...")
-
     bloco = bloco.strip()
     if not bloco:
-        print("[DEBUG] Bloco vazio - retornando None")
         return None
 
     bloco_upper = bloco.upper()
     is_alarme = "ALARME" in bloco_upper
     is_ligando = "EQUIPAMENTO_LIGANDO" in bloco_upper
 
-    print(f"[DEBUG] is_alarme={is_alarme} | is_ligando={is_ligando}")
-
     if is_ligando:
-        print("[DEBUG] Ignorando: EQUIPAMENTO_LIGANDO")
         return None
 
     if is_alarme:
-        print("[DEBUG] ALARME detectado - verificando raw")
         if not registrar_raw_bloco(bloco):
-            print("[DEBUG] Duplicata no raw - retornando None")
             return None
 
         if '|' in bloco:
@@ -71,21 +63,14 @@ def parse_dados(bloco: str):
         else:
             local = "DESCONHECIDO"
 
-        print(f"[DEBUG] Local extraído: {local}")
-
         m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
         timestamp = m_ts.group(1) if m_ts else ""
         var1 = f"{local} - {bloco[:150]}"
         var2 = timestamp
-
-        print("[DEBUG] Chamando enviar_sms_para_grupo...")
         enviar_sms_para_grupo(local, var1, var2)
-        print("[DEBUG] SMS enviado (tentativa concluída)")
         return None
 
-    print("[DEBUG] Leitura normal - processando")
     if not registrar_raw_bloco(bloco):
-        print("[DEBUG] Duplicata em leitura normal - retornando None")
         return None
 
     if '|' in bloco:

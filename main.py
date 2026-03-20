@@ -321,12 +321,14 @@ async def historico(request: Request):
 
 @app.post("/api/receber")
 async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
+    print(f"[DEBUG ROTA] Bloco recebido: {bloco[:120]}...")
     dados = parse_dados(bloco)
     if dados is None:
+        print("[DEBUG ROTA] parse_dados retornou None → status ignorado")
         return {"status": "ignorado"}
     salvar(dados, bloco)
+    print("[DEBUG ROTA] Dados salvos com sucesso")
     return {"status": "salvo"}
-
 
 @app.get("/health")
 async def health():

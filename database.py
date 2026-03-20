@@ -80,7 +80,7 @@ def init_usuarios():
     conn.commit()
 
     c.execute("SELECT COUNT(*) FROM usuarios WHERE username = 'admin'")
-    if c.fetchone()[0] == 0:
+    if c.fetchone()[0] == 0:    
         from passlib.context import CryptContext
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         hash_senha = pwd_context.hash("bioterio")  
@@ -172,14 +172,11 @@ def get_ultimo_alarme(local: str) -> tuple:
 def get_phones_for_local(local: str):
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT phones FROM usuarios WHERE bioterios LIKE ? AND ativo = 1", (f"%{local}%",))
+    c.execute("SELECT telefone FROM usuarios WHERE bioterios LIKE ? AND ativo = 1 AND telefone IS NOT NULL", (f"%{local}%",))
     results = c.fetchall()
     conn.close()
     
-    phones = []
-    for row in results:
-        if row[0]:
-            phones.extend([p.strip() for p in row[0].split(',') if p.strip()])
+    phones = [row[0].strip() for row in results if row[0]]
     return phones
 
 def get_bioterios_for_user(username: str):

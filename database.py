@@ -84,8 +84,10 @@ def init_usuarios():
         from passlib.context import CryptContext
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         hash_senha = pwd_context.hash("bioterio")  
-        c.execute("INSERT INTO usuarios (username, password_hash, role) VALUES (?, ?, ?)",
-                  ("admin", hash_senha, "admin"))
+        c.execute("""
+            INSERT INTO usuarios (username, password_hash, role, telefone, bioterios) 
+            VALUES (?, ?, ?, ?, ?)
+        """, ("admin", hash_senha, "admin", "", "BIOTERIO_UFMG,LAMMEBIO"))
         conn.commit()
     conn.close()
 

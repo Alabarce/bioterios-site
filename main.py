@@ -324,9 +324,7 @@ async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
     if dados is None:
         return {"status": "ignorado"}
     salvar(dados, bloco)
-    notificar_clientes_sobre_alarme(dados)
     return {"status": "salvo"}
-
 
 
 @app.get("/health")

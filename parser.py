@@ -52,24 +52,6 @@ def parse_dados(bloco: str):
     if is_ligando:
         return None
 
-    if is_alarme and TWILIO_CLIENT:
-        if '|' in bloco:
-            local = bloco.rsplit('|', 1)[-1].strip()
-        elif re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
-            local = "BIOTERIO_UFMG"
-        elif "LAMMEBIO" in bloco_upper:
-            local = "LAMMEBIO"
-        else:
-            local = "DESCONHECIDO"
-
-        m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
-        timestamp = m_ts.group(1) if m_ts else ""
-
-        var1 = f"{local} - {bloco[:120]}"
-        var2 = timestamp
-
-        enviar_sms_para_grupo(local, var1, var2)
-
     if '|' in bloco:
         local = bloco.rsplit('|', 1)[-1].strip()
     elif re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
@@ -78,6 +60,15 @@ def parse_dados(bloco: str):
         local = "LAMMEBIO"
     else:
         local = "DESCONHECIDO"
+
+    if is_alarme and TWILIO_CLIENT:
+        m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
+        timestamp = m_ts.group(1) if m_ts else ""
+
+        var1 = f"{local} - {bloco[:150]}"
+        var2 = timestamp
+
+        enviar_sms_para_grupo(local, var1, var2)
 
     m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
     timestamp = m_ts.group(1) if m_ts else ""
@@ -122,24 +113,17 @@ def parse_dados(bloco: str):
             raw = m_t.group(1).strip()
             valor = re.search(r'([\d.]+)', raw)
             dados[f"SL{i}_T"] = valor.group(1) if valor else raw
-            if '_F' in raw.upper():
-                dados["Falhas_SL"][f"SL{i}_T"] = True
 
         m_rh = re.search(rf'SL{i}_RH:([^@|]+?)(?=@SL{i}_|@|\Z)', bloco, re.IGNORECASE)
         if m_rh:
             raw = m_rh.group(1).strip()
             valor = re.search(r'([\d.]+)', raw)
             dados[f"SL{i}_RH"] = valor.group(1) if valor else raw
-            if '_F' in raw.upper():
-                dados["Falhas_SL"][f"SL{i}_RH"] = True
 
-        m_luz = re.search(rf'SL{i}_(?:CLARO|ESCURO)([^@|]*?)(?=@SL{i}_|@|\Z)', bloco, re.IGNORECASE)
+        m_luz = re.search(rf'SL{i}_(?:CLARO|ESCURO)', bloco, re.IGNORECASE)
         if m_luz:
             raw = m_luz.group(0).strip()
             status = re.search(r'(CLARO|ESCURO)', raw, re.IGNORECASE)
             dados[f"SL{i}_Luz"] = status.group(1).upper() if status else ""
-            if '_F' in raw.upper():
-                dados["Falhas_SL"][f"SL{i}_Luz"] = True
 
     return dados
-

@@ -7,13 +7,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from passlib.context import CryptContext
 import sqlite3
 import io
-import json
 import csv
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 from twilio.rest import Client
-from database import init_db, salvar, get_phones_for_local, get_bioterios_for_user, get_ultimo_alarme, atualizar_ultimo_alarme
 from database import init_db, init_usuarios, salvar
 from parser import parse_dados
 import threading
@@ -26,82 +24,6 @@ auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
 
 TWILIO_CLIENT = Client(account_sid, auth_token)
-
-ULTIMO_ALERTA = {}
-
-def extrair_variaveis_alarme(detalhe: str):
-    if not detalhe:
-        return "ALARME DETECTADO", "FALHA"
-
-    detalhe = detalhe.strip()
-
-    if '@' in detalhe:
-        leitura_raw = detalhe.rsplit('@', 1)[-1].strip()
-    else:
-        leitura_raw = detalhe
-
-    leitura_raw = leitura_raw.split('|')[0].strip()
-
-    var1 = leitura_raw.replace('____', ' ').replace('_', ' ')
-    var1 = ' '.join(var1.split())
-
-    var2 = "FALHA"
-
-    return var1, var2
-  
-def notificar_clientes_sobre_alarme(dados: dict):
-    detalhe = dados.get("Alarme_Detalhe", "").strip()
-    local = dados.get("Local", "Desconhecido")
-
-    if not detalhe:
-        return
-
-    ultimo_detalhe, ultimo_ts = get_ultimo_alarme(local)
-
-    if ultimo_detalhe == detalhe:
-        return
-
-    atualizar_ultimo_alarme(local, detalhe, dados.get("Timestamp", ""))
-
-    agora = datetime.now()
-    if local in ULTIMO_ALERTA and agora - ULTIMO_ALERTA[local] < timedelta(minutes=5):
-        return
-
-    var1, var2 = extrair_variaveis_alarme(detalhe)
-
-    telefones = get_phones_for_local(local)
-    enviados = 0
-    for tel in telefones:
-        if enviar_alerta_whatsapp(tel, var1, var2):
-            enviados += 1
-
-    if enviados > 0:
-        ULTIMO_ALERTA[local] = agora
-
-
-def enviar_alerta_whatsapp(telefone: str, var1: str, var2: str):
-    if not telefone.startswith("+"):
-        telefone = f"+{telefone}"
-
-    var1 = (var1 or "Desconhecido").strip()
-    var2 = (var2 or "FALHA").strip()
-
-    try:
-        msg = TWILIO_CLIENT.messages.create(
-            from_=TWILIO_FROM,
-            to=f"whatsapp:{telefone}",
-            content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
-            content_variables=json.dumps({
-                "1": var1,
-                "2": var2
-            })
-        )
-        print(f"[TWILIO] Enviado → SID: {msg.sid}")
-        return True
-    except Exception as e:
-        print(f"[TWILIO ERRO] Falha para {telefone}: {str(e)}")
-        return False
-
 
 
 @asynccontextmanager
@@ -128,58 +50,6 @@ def get_current_user(request: Request):
     return user
 
 
-@app.post("/admin/usuarios/criar")
-async def criar_usuario(
-    username: str = Form(...),
-    password: str = Form(...),
-    role: str = Form("cliente"),
-    user = Depends(get_current_user)
-):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403)
-    
-    hash_senha = pwd_context.hash(password)
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    try:
-        c.execute(
-            "INSERT INTO usuarios (username, password_hash, role, phones, bioterios) VALUES (?, ?, ?, '', '')",
-            (username, hash_senha, role)
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        return templates.TemplateResponse("admin/usuarios.html", {
-            "request": request,
-            "usuarios": [],  
-            "user": user,
-            "error": "Usuário já existe"
-        })
-    conn.close()
-    return RedirectResponse("/admin/usuarios", status_code=303)
-
-
-@app.post("/admin/usuarios/atualizar/{user_id}")
-async def atualizar_usuario(
-    user_id: int,
-    phones: str = Form(default=""),
-    bioterios: str = Form(default=""),
-    user = Depends(get_current_user)
-):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403)
-    
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute(
-        "UPDATE usuarios SET phones = ?, bioterios = ? WHERE id = ?",
-        (phones.strip(), bioterios.strip(), user_id)
-    )
-    conn.commit()
-    conn.close()
-    
-    return RedirectResponse("/admin/usuarios", status_code=303)
-
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     if request.session.get("user"):
@@ -204,58 +74,6 @@ async def login(request: Request, username: str = Form(...), password: str = For
 async def logout(request: Request):
     request.session.pop("user", None)
     return RedirectResponse(url="/login")
-
-@app.get("/export-csv")
-async def export_csv(user = Depends(get_current_user)):
-    bioterios = get_bioterios_for_user(user["username"])
-    if user["role"] == "admin" or not bioterios:
-        bioterios = None
-
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-
-    if bioterios:
-        placeholders = ','.join('?' for _ in bioterios)
-        query = f"""
-            SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
-                   SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
-                   SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
-                   SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
-                   SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
-                   data_captura
-            FROM leituras 
-            WHERE Local IN ({placeholders})
-            ORDER BY id DESC 
-            LIMIT 300
-        """
-        c.execute(query, bioterios)
-    else:
-        c.execute("""
-            SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
-                   SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
-                   SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
-                   SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
-                   SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
-                   data_captura
-            FROM leituras 
-            ORDER BY id DESC 
-            LIMIT 300
-        """)
-
-    rows = c.fetchall()
-    headers = [desc[0] for desc in c.description]
-    conn.close()
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    writer.writerows(rows)
-
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=leituras_recentes.csv"}
-    )
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, user=Depends(get_current_user)):
@@ -336,6 +154,136 @@ async def dashboard(request: Request, user=Depends(get_current_user)):
         "user": user
     })
 
+@app.get("/admin/usuarios", response_class=HTMLResponse)
+async def admin_usuarios(request: Request, user = Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    conn = sqlite3.connect("leituras.db")
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT id, username, role, ativo, telefone, bioterios 
+        FROM usuarios 
+        ORDER BY username
+    """)
+    usuarios = c.fetchall()
+    conn.close()
+    
+    return templates.TemplateResponse("admin/usuarios.html", {
+        "request": request,
+        "usuarios": usuarios,
+        "user": user
+    })
+
+
+@app.post("/admin/usuarios/criar")
+async def criar_usuario(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("cliente"),
+    telefone: str = Form(""),
+    bioterios: str = Form(""),
+    user = Depends(get_current_user)
+):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    hash_senha = pwd_context.hash(password)
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT INTO usuarios (username, password_hash, role, telefone, bioterios) VALUES (?, ?, ?, ?, ?)",
+            (username, hash_senha, role, telefone.strip(), bioterios.strip())
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return templates.TemplateResponse("admin/usuarios.html", {
+            "request": request,
+            "usuarios": [],
+            "user": user,
+            "error": "Usuário já existe"
+        })
+    conn.close()
+    return RedirectResponse("/admin/usuarios", status_code=303)
+
+
+@app.post("/admin/usuarios/atualizar/{user_id}")
+async def atualizar_usuario(
+    user_id: int,
+    telefone: str = Form(default=""),
+    bioterios: str = Form(default=""),
+    user = Depends(get_current_user)
+):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403)
+    
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+    c.execute(
+        "UPDATE usuarios SET telefone = ?, bioterios = ? WHERE id = ?",
+        (telefone.strip(), bioterios.strip(), user_id)
+    )
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse("/admin/usuarios", status_code=303)
+
+
+@app.get("/export-csv")
+async def export_csv(user = Depends(get_current_user)):
+    bioterios = get_bioterios_for_user(user["username"])
+    if user["role"] == "admin" or not bioterios:
+        bioterios = None
+
+    conn = sqlite3.connect("leituras.db")
+    c = conn.cursor()
+
+    if bioterios:
+        placeholders = ','.join('?' for _ in bioterios)
+        query = f"""
+            SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
+                   SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
+                   SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
+                   SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
+                   SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
+                   data_captura
+            FROM leituras 
+            WHERE Local IN ({placeholders})
+            ORDER BY id DESC 
+            LIMIT 500
+        """
+        c.execute(query, bioterios)
+    else:
+        c.execute("""
+            SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
+                   SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
+                   SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
+                   SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
+                   SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
+                   data_captura
+            FROM leituras 
+            ORDER BY id DESC 
+            LIMIT 500
+        """)
+
+    rows = c.fetchall()
+    headers = [desc[0] for desc in c.description]
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leituras_bioterios.csv"}
+    )
 
 @app.get("/historico", response_class=HTMLResponse)
 async def historico(request: Request):
@@ -370,36 +318,6 @@ async def historico(request: Request):
         "rows": rows
     })
 
-@app.get("/export-csv")
-async def export_csv():
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT Timestamp, Local, Sensor_ID, Sinal, VBAT, Energia, Alarme,
-               SL1_T, SL1_RH, SL1_Luz, SL2_T, SL2_RH, SL2_Luz,
-               SL3_T, SL3_RH, SL3_Luz, SL4_T, SL4_RH, SL4_Luz,
-               SL5_T, SL5_RH, SL5_Luz, SL6_T, SL6_RH, SL6_Luz,
-               SL7_T, SL7_RH, SL7_Luz, SL8_T, SL8_RH, SL8_Luz,
-               data_captura
-        FROM leituras 
-        ORDER BY id DESC 
-        LIMIT 500
-    """)
-    rows = c.fetchall()
-    headers = [desc[0] for desc in c.description]
-    conn.close()
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    writer.writerows(rows)
-
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=historico_leituras.csv"}
-    )
-
 @app.post("/api/receber")
 async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
     dados = parse_dados(bloco)
@@ -409,48 +327,7 @@ async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
     notificar_clientes_sobre_alarme(dados)
     return {"status": "salvo"}
 
-@app.get("/admin/usuarios", response_class=HTMLResponse)
-async def admin_usuarios(request: Request, user = Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403)
-    
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT id, username, role, ativo, phones, bioterios 
-        FROM usuarios 
-        ORDER BY username
-    """)
-    usuarios = c.fetchall()
-    conn.close()
-    
-    return templates.TemplateResponse("admin/usuarios.html", {
-        "request": request,
-        "usuarios": usuarios,
-        "user": user
-    })
 
-
-@app.post("/admin/usuarios/atualizar/{user_id}")
-async def atualizar_usuario(
-    user_id: int,
-    phones: str = Form(default=""),
-    bioterios: str = Form(default=""),
-    user = Depends(get_current_user)
-):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403)
-    
-    conn = sqlite3.connect("leituras.db")
-    c = conn.cursor()
-    c.execute(
-        "UPDATE usuarios SET phones = ?, bioterios = ? WHERE id = ?",
-        (phones.strip(), bioterios.strip(), user_id)
-    )
-    conn.commit()
-    conn.close()
-    
-    return RedirectResponse("/admin/usuarios", status_code=303)
 
 @app.get("/health")
 async def health():

@@ -1,9 +1,10 @@
 import re
 import json
 import os
+import sqlite3
 from dotenv import load_dotenv
 from twilio.rest import Client
-
+from database import registrar_raw_bloco, DB
 load_dotenv()
 
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
@@ -12,9 +13,29 @@ TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER")
 
 TWILIO_CLIENT = Client(account_sid, auth_token) if all([account_sid, auth_token, TWILIO_FROM]) else None
 
-import re
-import json
-from database import registrar_raw_bloco
+def enviar_sms_para_grupo(local, var1, var2):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT telefone FROM usuarios WHERE ativo = 1 AND bioterios LIKE ? AND telefone IS NOT NULL", ('%' + local + '%',))
+    usuarios = c.fetchall()
+    conn.close()
+
+    if not TWILIO_CLIENT:
+        return
+    for row in usuarios:
+        telefone = row[0]
+        if telefone:
+            try:
+                TWILIO_CLIENT.messages.create(
+                    from_=TWILIO_FROM,
+                    to=telefone,
+                    content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
+                    content_variables=json.dumps({"1": var1, "2": var2})
+                )
+            except:
+                pass
+
+
 
 def parse_dados(bloco: str):
     bloco = bloco.strip()
@@ -32,30 +53,22 @@ def parse_dados(bloco: str):
         return None
 
     if is_alarme and TWILIO_CLIENT:
-        try:
-            if '|' in bloco:
-                local = bloco.rsplit('|', 1)[-1].strip()
-            elif re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
-                local = "BIOTERIO_UFMG"
-            elif "LAMMEBIO" in bloco_upper:
-                local = "LAMMEBIO"
-            else:
-                local = "DESCONHECIDO"
+        if '|' in bloco:
+            local = bloco.rsplit('|', 1)[-1].strip()
+        elif re.search(r'BIOTERIO_UFMG|UFMG', bloco_upper):
+            local = "BIOTERIO_UFMG"
+        elif "LAMMEBIO" in bloco_upper:
+            local = "LAMMEBIO"
+        else:
+            local = "DESCONHECIDO"
 
-            m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
-            timestamp = m_ts.group(1) if m_ts else ""
+        m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
+        timestamp = m_ts.group(1) if m_ts else ""
 
-            var1 = f"{local} - {bloco[:120]}"
-            var2 = timestamp
+        var1 = f"{local} - {bloco[:120]}"
+        var2 = timestamp
 
-            TWILIO_CLIENT.messages.create(
-                from_=TWILIO_FROM,
-                to="whatsapp:+5511984264081",
-                content_sid="HX4aa31c6e5385f78336c83cde97dfac24",
-                content_variables=json.dumps({"1": var1, "2": var2})
-            )
-        except:
-            pass
+        enviar_sms_para_grupo(local, var1, var2)
 
     if '|' in bloco:
         local = bloco.rsplit('|', 1)[-1].strip()
@@ -129,5 +142,4 @@ def parse_dados(bloco: str):
                 dados["Falhas_SL"][f"SL{i}_Luz"] = True
 
     return dados
-
 

@@ -63,12 +63,22 @@ def init_usuarios():
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'cliente',
+            telefone TEXT,
+            bioterios TEXT,
             ativo INTEGER DEFAULT 1,
             criado_em TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
     
+    c.execute("PRAGMA table_info(usuarios)")
+    columns = [info[1] for info in c.fetchall()]
+    if 'telefone' not in columns:
+        c.execute("ALTER TABLE usuarios ADD COLUMN telefone TEXT")
+    if 'bioterios' not in columns:
+        c.execute("ALTER TABLE usuarios ADD COLUMN bioterios TEXT")
+    conn.commit()
+
     c.execute("SELECT COUNT(*) FROM usuarios WHERE username = 'admin'")
     if c.fetchone()[0] == 0:
         from passlib.context import CryptContext

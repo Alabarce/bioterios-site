@@ -3,7 +3,6 @@
 {% block content %}
 <h1 class="mb-4">Gerenciar Usuários</h1>
 
-<!-- Lista de usuários existentes -->
 <h3>Usuários cadastrados</h3>
 {% if usuarios %}
 <table class="table table-dark table-striped table-hover">
@@ -12,7 +11,7 @@
             <th>Usuário</th>
             <th>Role</th>
             <th>Ativo</th>
-            <th>Telefones</th>
+            <th>Telefone</th>
             <th>Biotérios permitidos</th>
             <th>Ações</th>
         </tr>
@@ -20,15 +19,15 @@
     <tbody>
     {% for u in usuarios %}
         <tr>
-            <td>{{ u[1] }}</td>
-            <td>{{ u[2] }}</td>
-            <td>{% if u[3] == 1 %}Sim{% else %}Não{% endif %}</td>
-            <td>{{ u[4] | default('') }}</td>
-            <td>{{ u[5] | default('') }}</td>
+            <td>{{ u.username }}</td>
+            <td>{{ u.role }}</td>
+            <td>{% if u.ativo == 1 %}Sim{% else %}Não{% endif %}</td>
+            <td>{{ u.telefone | default('') }}</td>
+            <td>{{ u.bioterios | default('') }}</td>
             <td>
-                <form action="/admin/usuarios/atualizar/{{ u[0] }}" method="post" class="d-flex gap-2 align-items-center">
-                    <input type="text" name="phones" value="{{ u[4] | default('') }}" class="form-control form-control-sm" placeholder="+55..." style="width: 180px;">
-                    <input type="text" name="bioterios" value="{{ u[5] | default('') }}" class="form-control form-control-sm" placeholder="Sala A, Sala B" style="width: 220px;">
+                <form action="/admin/usuarios/atualizar/{{ u.id }}" method="post" class="d-flex gap-2 align-items-center">
+                    <input type="text" name="telefone" value="{{ u.telefone | default('') }}" class="form-control form-control-sm" placeholder="+5511..." style="width: 180px;">
+                    <input type="text" name="bioterios" value="{{ u.bioterios | default('') }}" class="form-control form-control-sm" placeholder="BIOTERIO_UFMG,LAMMEBIO" style="width: 220px;">
                     <button type="submit" class="btn btn-sm btn-success">Salvar</button>
                 </form>
             </td>
@@ -42,7 +41,6 @@
     </div>
 {% endif %}
 
-<!-- Formulário para criar novo usuário -->
 <h3 class="mt-5">Criar novo usuário</h3>
 <form action="/admin/usuarios/criar" method="post" class="row g-3">
     <div class="col-md-4">
@@ -59,6 +57,14 @@
             <option value="cliente">Cliente</option>
             <option value="admin">Admin</option>
         </select>
+    </div>
+    <div class="col-md-4">
+        <label for="telefone" class="form-label">Telefone (WhatsApp)</label>
+        <input type="text" name="telefone" id="telefone" class="form-control" placeholder="+5511984264081">
+    </div>
+    <div class="col-md-6">
+        <label for="bioterios" class="form-label">Biotérios permitidos (separados por vírgula)</label>
+        <input type="text" name="bioterios" id="bioterios" class="form-control" placeholder="BIOTERIO_UFMG,LAMMEBIO">
     </div>
     <div class="col-12 mt-3">
         <button type="submit" class="btn btn-primary">Criar usuário</button>

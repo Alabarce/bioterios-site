@@ -305,7 +305,7 @@ async def historico(request: Request):
                Falha_SL7_T, Falha_SL7_RH, Falha_SL7_Luz,
                Falha_SL8_T, Falha_SL8_RH, Falha_SL8_Luz
         FROM leituras 
-        ORDER BY id ASC 
+        ORDER BY id DESC 
         LIMIT 150
     """)
     rows = c.fetchall()

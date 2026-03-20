@@ -305,8 +305,9 @@ async def historico(request: Request):
                Falha_SL7_T, Falha_SL7_RH, Falha_SL7_Luz,
                Falha_SL8_T, Falha_SL8_RH, Falha_SL8_Luz
         FROM leituras 
+        WHERE Sensor_ID != '' 
         ORDER BY id DESC 
-        LIMIT 150
+        LIMIT 200
     """)
     rows = c.fetchall()
     headers = [desc[0] for desc in c.description]

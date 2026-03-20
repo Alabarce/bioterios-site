@@ -16,6 +16,7 @@ from database import init_db, init_usuarios, salvar, get_bioterios_for_user
 from parser import parse_dados
 import threading
 from scraper import rodar_scraper
+import sys
 
 load_dotenv()
 
@@ -321,7 +322,6 @@ async def historico(request: Request):
 
 @app.post("/api/receber")
 async def receber_bloco(bloco: str = Body(..., media_type="text/plain")):
-    import sys
     sys.stderr.write(f"[DEBUG ROTA] BLOCO RECEBIDO: {bloco[:180]}\n")
     sys.stderr.flush()
 

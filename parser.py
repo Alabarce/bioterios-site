@@ -2,6 +2,7 @@ import re
 import json
 import os
 import sqlite3
+import sys
 from dotenv import load_dotenv
 from twilio.rest import Client
 from database import registrar_raw_bloco, DB
@@ -36,21 +37,35 @@ def enviar_sms_para_grupo(local, var1, var2):
                 pass
 
 
+import sys
+
 def parse_dados(bloco: str):
+    sys.stderr.write("[DEBUG PARSER] Bloco recebido: " + bloco[:180] + "\n")
+    sys.stderr.flush()
+
     bloco = bloco.strip()
     if not bloco:
+        sys.stderr.write("[DEBUG PARSER] Bloco vazio → None\n")
+        sys.stderr.flush()
         return None
 
     bloco_upper = bloco.upper()
     is_alarme = "ALARME" in bloco_upper
     is_ligando = "EQUIPAMENTO_LIGANDO" in bloco_upper
+    sys.stderr.write("[DEBUG PARSER] is_alarme=" + str(is_alarme) + " | is_ligando=" + str(is_ligando) + "\n")
+    sys.stderr.flush()
 
     if is_ligando:
+        sys.stderr.write("[DEBUG PARSER] Ignorando LIGANDO\n")
+        sys.stderr.flush()
         return None
 
-
     if is_alarme:
+        sys.stderr.write("[DEBUG PARSER] ALARME detectado - verificando raw\n")
+        sys.stderr.flush()
         if not registrar_raw_bloco(bloco):
+            sys.stderr.write("[DEBUG PARSER] Duplicata raw → None\n")
+            sys.stderr.flush()
             return None
 
         if '|' in bloco:
@@ -62,15 +77,25 @@ def parse_dados(bloco: str):
             local = "LAMMEBIO"
         else:
             local = "DESCONHECIDO"
+        sys.stderr.write("[DEBUG PARSER] Local: " + local + "\n")
+        sys.stderr.flush()
 
         m_ts = re.search(r'(\d{2}/\d{2}/\d{2}_\d{2}:\d{2}:\d{2})', bloco)
         timestamp = m_ts.group(1) if m_ts else ""
         var1 = f"{local} - {bloco[:150]}"
         var2 = timestamp
+        sys.stderr.write("[DEBUG PARSER] Chamando enviar_sms_para_grupo...\n")
+        sys.stderr.flush()
         enviar_sms_para_grupo(local, var1, var2)
-        return None   
-    
+        sys.stderr.write("[DEBUG PARSER] SMS enviado → None\n")
+        sys.stderr.flush()
+        return None
+
+    sys.stderr.write("[DEBUG PARSER] Leitura normal - processando\n")
+    sys.stderr.flush()
     if not registrar_raw_bloco(bloco):
+        sys.stderr.write("[DEBUG PARSER] Duplicata normal → None\n")
+        sys.stderr.flush()
         return None
 
     if '|' in bloco:

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 from twilio.rest import Client
-from database import init_db, init_usuarios, salvar
+from database import init_db, init_usuarios, salvar, get_bioterios_for_user
 from parser import parse_dados
 import threading
 from scraper import rodar_scraper

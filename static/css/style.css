@@ -1,34 +1,66 @@
-.modern-table {
-    border-radius: 6px;
+body {
+    background: #f8fafc;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #1e2937;
+}
+.main-container {
+    max-width: 1480px;
+    margin: 0 auto;
+}
+.room-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.035);
+    border: 1px solid #e2e8f0;
     overflow: hidden;
-    border: 1px solid #dee2e6;
-    background-color: white;
 }
-
-.modern-table thead th {
-    background-color: #f8f9fa;
-    color: #495057;
+.room-header {
+    background: #f1f5f9;
+    padding: 1.25rem 1.75rem;
     font-weight: 600;
-    text-transform: uppercase;
+    color: #0f172a;
+}
+.param-box {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.param-box:last-child {
+    margin-bottom: 0;
+}
+.param-icon {
+    background: #dbeafe;
+    color: #1e40af;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+}
+.param-label {
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+.param-value {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+.last-update {
+    background: #f8fafc;
+    padding: 0.9rem 1.75rem;
     font-size: 0.85rem;
-    border-bottom: 2px solid #dee2e6;
+    color: #64748b;
+    text-align: center;
+    border-top: 1px solid #e2e8f0;
 }
-
-.modern-table tbody tr:hover {
-    background-color: #f1f3f5;
-}
-
-.modern-table td, .modern-table th {
-    vertical-align: middle;
-    border-color: #dee2e6;
-    padding: 0.75rem 1rem;
-    color: #212529;
-}
-
-.bg-danger-subtle {
-    background-color: #f8d7da !important;
-}
-
-.text-danger {
-    color: #dc3545 !important;
+.status-pill {
+    border-radius: 9999px;
+    padding: 0.35rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 500;
 }

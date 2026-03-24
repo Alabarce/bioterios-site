@@ -53,7 +53,7 @@
             <div class="d-flex mx-auto gap-2">
                 <a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/">Dashboard</a>
                 <a class="nav-link {% if active_page == 'historico' %}active{% endif %}" href="/historico">Histórico</a>
-                {% if user.role == 'admin' %}
+                {% if user and user.get('role') == 'admin' %}
                 <a class="nav-link {% if active_page == 'usuarios' %}active{% endif %}" href="/admin/usuarios">Usuários</a>
                 {% endif %}
             </div>

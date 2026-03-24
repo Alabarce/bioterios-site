@@ -330,7 +330,6 @@ async def historico(request: Request, user: dict = None):
         "headers": headers,
         "rows": rows,
         "user": user,           
-        "is_admin": user and user.get("role") == "admin"  
     })
 
 @app.post("/api/receber")

@@ -320,10 +320,12 @@ async def historico(request: Request):
     headers = [desc[0] for desc in c.description]
     conn.close()
 
+    data_rows = [dict(row) for row in rows]
+
     return templates.TemplateResponse("historico.html", {
         "request": request,
         "headers": headers,
-        "rows": rows,
+        "rows": data_rows,
         "user": request.session.get("user"),
         "is_login_page": False,
         "active_page": "historico"

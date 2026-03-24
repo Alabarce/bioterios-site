@@ -22,16 +22,11 @@
             <tbody>
                 {% for row in rows %}
                 <tr>
-                    {% set row_dict = {} %}
-                    {% for h in headers %}
-                        {% set _ = row_dict.update({h: row[loop.index0]}) %}
-                    {% endfor %}
-
                     {% for header in headers %}
                         {% if not header.startswith('Falha_') and header != 'data_captura' %}
-                            {% set value = row_dict.get(header, '') %}
+                            {% set value = row.get(header) %}
                             {% set falha_key = 'Falha_' + header %}
-                            {% set is_fail = row_dict.get(falha_key) == 1 %}
+                            {% set is_fail = row.get(falha_key) == 1 %}
 
                             <td class="{% if is_fail %}bg-danger text-white fw-bold{% endif %}">
                                 {% if value is none or value == '' or value == 'None' -%}

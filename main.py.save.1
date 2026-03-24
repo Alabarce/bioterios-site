@@ -17,6 +17,8 @@ from parser import parse_dados
 import threading
 from scraper import rodar_scraper
 import sys
+from flask import current_app
+from flask_login import current_user
 
 load_dotenv()
 
@@ -44,22 +46,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+def get_current_user(request: Request):
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    return user
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     if request.session.get("user"):
         return RedirectResponse(url="/")
     return templates.TemplateResponse("login.html", {"request": request})
-
-def get_current_user(request: Request):
-    user = request.session.get("user")
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_303_SEE_OTHER,
-            headers={"Location": "/login"}
-        )
-    
-    return user
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):

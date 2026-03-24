@@ -1,116 +1,103 @@
 {% extends "base.html" %}
-
 {% block title %} - Dashboard{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <!-- Cabeçalho principal -->
+
+<div class="py-5">
+
     <div class="d-flex justify-content-between align-items-center mb-5">
-        <h2 class="mb-0 fw-bold">Monitoramento de Bioterios</h2>
-        <a href="/export-csv" class="btn btn-outline-primary">
-            <i class="bi bi-download me-2"></i> Exportar CSV
-        </a>
+        <h2 class="mb-0">Monitoramento de Biotérios</h2>
     </div>
 
-    <!-- BIOTERIO_CENTRAL_UFMG -->
-    <div class="card mb-5 shadow border-0 rounded-3 overflow-hidden">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
-            <h5 class="mb-0">BIOTERIO_CENTRAL_UFMG</h5>
-            <small>Última leitura: {{ leituras.ufmg.ultima_leitura|default("Não disponível") }}</small>
+    <div class="mb-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h5 class="fw-semibold mb-0">BIOTERIO_CENTRAL_UFMG</h5>
+            <small class="text-muted">Última leitura: {{ leituras.ufmg.ultima_leitura|default("Não disponível") }}</small>
         </div>
-        <div class="card-body bg-light">
-            <div class="d-flex gap-3 mb-4 flex-wrap">
-                <span class="badge bg-success px-4 py-2 fs-6">Energia: OK</span>
-                <span class="badge bg-secondary px-4 py-2 fs-6">BATERIA ---</span>
-            </div>
 
-            <p class="text-muted mb-4 fw-light">Temperatura, umidade e iluminação das salas monitoradas</p>
+        <div class="d-flex gap-3 mb-4">
+            <span class="px-4 py-2 bg-success text-white rounded-3 fw-medium">Energia: OK</span>
+            <span class="px-4 py-2 border rounded-3 fw-medium">BATERIA ---</span>
+        </div>
 
-            <div class="row g-4">
-                {% for sala in leituras.ufmg.salas %}
-                <div class="col-xl-3 col-lg-4 col-md-6">
-                    <div class="card h-100 border shadow-sm rounded-3">
-                        <div class="card-header bg-white text-center fw-bold py-2">
-                            Sala {{ sala.numero }}
-                        </div>
-                        <div class="card-body text-center">
-                            <div class="mb-4">
-                                <i class="bi bi-thermometer-half fs-3 text-primary d-block mb-1"></i>
-                                <small class="text-muted d-block">Temperatura</small>
-                                <span class="fs-4 fw-bold {% if sala.falha_t %}text-danger{% endif %}">
-                                    {{ sala.temperatura|default("---") }}
-                                </span>
-                            </div>
-                            <div class="mb-4">
-                                <i class="bi bi-droplet fs-3 text-info d-block mb-1"></i>
-                                <small class="text-muted d-block">Umidade</small>
-                                <span class="fs-4 fw-bold {% if sala.falha_rh %}text-danger{% endif %}">
-                                    {{ sala.umidade|default("---") }}
-                                </span>
-                            </div>
-                            <div class="mb-3">
-                                <i class="bi bi-lightbulb fs-3 text-warning d-block mb-1"></i>
-                                <small class="text-muted d-block">Iluminação</small>
-                                <span class="fs-4 fw-bold {% if sala.falha_luz %}text-danger{% endif %}">
-                                    {{ sala.luz|default("---") }}
-                                </span>
+        <div class="row g-4">
+            {% for sala in leituras.ufmg.salas %}
+            <div class="col-xl-3 col-lg-4 col-md-6">
+                <div class="border rounded-4 bg-white shadow-sm overflow-hidden h-100">
+                    <div class="p-4 border-bottom">
+                        <h6 class="fw-semibold mb-0">Sala {{ sala.numero }}</h6>
+                    </div>
+                    <div class="p-4">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <i class="bi bi-thermometer-half text-secondary"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted">Temperatura</small>
+                                <div class="fs-5 fw-semibold {% if sala.falha_t %}text-danger{% endif %}">{{ sala.temperatura|default("---") }}</div>
                             </div>
                         </div>
-                        <div class="card-footer bg-white text-center small text-muted py-2">
-                            Atualização: {{ sala.ultima_atualizacao|default("---") }}
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <i class="bi bi-droplet text-secondary"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted">Umidade</small>
+                                <div class="fs-5 fw-semibold {% if sala.falha_rh %}text-danger{% endif %}">{{ sala.umidade|default("---") }}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <i class="bi bi-lightbulb text-secondary"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted">Iluminação</small>
+                                <div class="fs-5 fw-semibold {% if sala.falha_luz %}text-danger{% endif %}">{{ sala.luz|default("---") }}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                {% endfor %}
             </div>
+            {% endfor %}
         </div>
     </div>
 
-    <!-- LAMMEBIO -->
-    <div class="card shadow border-0 rounded-3 overflow-hidden">
-        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center py-3">
-            <h5 class="mb-0">LAMMEBIO</h5>
-            <small>Última leitura: {{ leituras.lammebio.ultima_leitura|default("Não disponível") }}</small>
+    <div>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h5 class="fw-semibold mb-0">LAMMEBIO</h5>
+            <small class="text-muted">Última leitura: {{ leituras.lammebio.ultima_leitura|default("Não disponível") }}</small>
         </div>
-        <div class="card-body bg-light">
-            <div class="row g-4">
-                {% for sala in leituras.lammebio.salas %}
-                <div class="col-xl-3 col-lg-4 col-md-6">
-                    <div class="card h-100 border shadow-sm rounded-3">
-                        <div class="card-header bg-white text-center fw-bold py-2">
-                            Sala {{ sala.numero }}
-                        </div>
-                        <div class="card-body text-center">
-                            <div class="mb-4">
-                                <i class="bi bi-thermometer-half fs-3 text-primary d-block mb-1"></i>
-                                <small class="text-muted d-block">Temperatura</small>
-                                <span class="fs-4 fw-bold {% if sala.falha_t %}text-danger{% endif %}">
-                                    {{ sala.temperatura|default("---") }}
-                                </span>
-                            </div>
-                            <div class="mb-4">
-                                <i class="bi bi-droplet fs-3 text-info d-block mb-1"></i>
-                                <small class="text-muted d-block">Umidade</small>
-                                <span class="fs-4 fw-bold {% if sala.falha_rh %}text-danger{% endif %}">
-                                    {{ sala.umidade|default("---") }}
-                                </span>
-                            </div>
-                            <div class="mb-3">
-                                <i class="bi bi-lightbulb fs-3 text-warning d-block mb-1"></i>
-                                <small class="text-muted d-block">Iluminação</small>
-                                <span class="fs-4 fw-bold {% if sala.falha_luz %}text-danger{% endif %}">
-                                    {{ sala.luz|default("---") }}
-                                </span>
+
+        <div class="row g-4">
+            {% for sala in leituras.lammebio.salas %}
+            <div class="col-xl-3 col-lg-4 col-md-6">
+                <div class="border rounded-4 bg-white shadow-sm overflow-hidden h-100">
+                    <div class="p-4 border-bottom">
+                        <h6 class="fw-semibold mb-0">Sala {{ sala.numero }}</h6>
+                    </div>
+                    <div class="p-4">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <i class="bi bi-thermometer-half text-secondary"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted">Temperatura</small>
+                                <div class="fs-5 fw-semibold {% if sala.falha_t %}text-danger{% endif %}">{{ sala.temperatura|default("---") }}</div>
                             </div>
                         </div>
-                        <div class="card-footer bg-white text-center small text-muted py-2">
-                            Atualização: {{ sala.ultima_atualizacao|default("---") }}
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <i class="bi bi-droplet text-secondary"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted">Umidade</small>
+                                <div class="fs-5 fw-semibold {% if sala.falha_rh %}text-danger{% endif %}">{{ sala.umidade|default("---") }}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <i class="bi bi-lightbulb text-secondary"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted">Iluminação</small>
+                                <div class="fs-5 fw-semibold {% if sala.falha_luz %}text-danger{% endif %}">{{ sala.luz|default("---") }}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                {% endfor %}
             </div>
+            {% endfor %}
         </div>
     </div>
+
 </div>
+
 {% endblock %}

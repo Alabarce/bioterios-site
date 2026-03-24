@@ -293,12 +293,7 @@ async def export_csv(user = Depends(get_current_user)):
     )
 
 @app.get("/historico", response_class=HTMLResponse)
-async def historico(request: Request, user: dict = None):
-    try:
-        user = await get_current_user(request) if request.session.get("user") else None
-    except HTTPException:
-        user = None
-
+async def historico(request: Request):
     conn = sqlite3.connect("leituras.db")
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -329,7 +324,9 @@ async def historico(request: Request, user: dict = None):
         "request": request,
         "headers": headers,
         "rows": rows,
-        "user": user,           
+        "user": request.session.get("user"),
+        "is_login_page": False,
+        "active_page": "historico"
     })
 
 @app.post("/api/receber")

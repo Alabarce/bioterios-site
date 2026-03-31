@@ -9,6 +9,7 @@
         <h2 class="mb-0">Monitoramento de Biotérios</h2>
     </div>
 
+    <!-- ==================== BIOTERIO_CENTRAL_UFMG ==================== -->
     <div class="mb-5">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h5 class="fw-semibold mb-0">BIOTERIO_CENTRAL_UFMG</h5>
@@ -56,10 +57,17 @@
         </div>
     </div>
 
+    <!-- ==================== LAMMEBIO ==================== -->
     <div>
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h5 class="fw-semibold mb-0">LAMMEBIO</h5>
             <small class="text-muted">Última leitura: {{ leituras.lammebio.ultima_leitura|default("Não disponível") }}</small>
+        </div>
+
+
+        <div class="d-flex gap-3 mb-4">
+            <span class="px-4 py-2 bg-success text-white rounded-3 fw-medium">Energia: OK</span>
+            <span class="px-4 py-2 border rounded-3 fw-medium">BATERIA ---</span>
         </div>
 
         <div class="row g-4">
